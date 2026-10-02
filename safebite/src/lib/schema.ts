@@ -9,6 +9,7 @@ export type EnergyLevel = 'low' | 'medium' | 'high'
 // profiles/{uid}
 export interface Profile {
   email: string
+  name: string // empty until the user answers the setup questions
   createdAt: Timestamp
   allergens: string[]
   currentState: CurrentState

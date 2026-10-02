@@ -103,6 +103,11 @@ a.card:hover { border-color: var(--accent); }
 .setup fieldset { border: none; padding: 0; margin: 1.75rem 0; }
 .setup legend { font-weight: 600; font-size: 1.1rem; padding: 0; }
 .setup fieldset p { margin: 0.25rem 0 0; }
+.setup fieldset > input {
+  display: block; width: 100%; max-width: 320px; margin-top: 0.75rem;
+  font: inherit; padding: 0.5rem 0.75rem; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
 .choices { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
 .choice {
   display: flex; align-items: center; gap: 0.5rem; cursor: pointer;

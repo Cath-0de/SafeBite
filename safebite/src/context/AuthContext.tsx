@@ -55,8 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     loading,
     // ensureProfile writes createdAt and updatedAt in the same request, so they
-    // stay equal until the first updateProfile call (the setup form).
-    needsSetup: profile !== null && profile.createdAt.isEqual(profile.updatedAt),
+    // stay equal until the first updateProfile call (the setup form). The name
+    // check also catches profiles saved before the name question existed.
+    needsSetup: profile !== null && (profile.createdAt.isEqual(profile.updatedAt) || !profile.name),
     signInWithGoogle: async () => {
       if (auth) await signInWithPopup(auth, new GoogleAuthProvider())
     },

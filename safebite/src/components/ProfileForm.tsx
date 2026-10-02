@@ -16,7 +16,9 @@ const ENERGY: { value: EnergyLevel; label: string }[] = [
 
 // The allergen / state / energy questions, shared by first-time setup and the profile page.
 export default function ProfileForm({ profile, submitLabel }: { profile: Profile; submitLabel: string }) {
-  const { saveProfile } = useAuth()
+  const { user, saveProfile } = useAuth()
+  // Google accounts come with a name, so offer it as the starting answer.
+  const [name, setName] = useState(profile.name || user?.displayName || '')
   const [allergens, setAllergens] = useState<string[]>(profile.allergens)
   const [currentState, setCurrentState] = useState<CurrentState>(profile.currentState)
   const [energyLevel, setEnergyLevel] = useState<EnergyLevel>(profile.energyLevel)
@@ -35,7 +37,7 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
     setError('')
     setSaved(false)
     try {
-      await saveProfile({ allergens, currentState, energyLevel })
+      await saveProfile({ name: name.trim(), allergens, currentState, energyLevel })
       setSaved(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -46,6 +48,23 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
 
   return (
     <form className="setup" onSubmit={onSubmit}>
+      <fieldset>
+        <legend><label htmlFor="profile-name">What's your name?</label></legend>
+        <input
+          id="profile-name"
+          value={name}
+          onChange={(e) => {
+            setSaved(false)
+            setName(e.target.value)
+          }}
+          autoComplete="name"
+          maxLength={100}
+          pattern=".*\S.*"
+          title="Enter your name"
+          required
+        />
+      </fieldset>
+
       <fieldset>
         <legend>Do you have any food allergies or restrictions?</legend>
         <p className="muted">Select all that apply, or leave blank if none.</p>

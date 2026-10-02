@@ -29,6 +29,7 @@ export async function ensureProfile(user: User): Promise<Profile> {
     if (snap.exists()) return
     tx.set(ref, {
       email: user.email ?? '',
+      name: '',
       createdAt: serverTimestamp(),
       allergens: [],
       currentState: 'remission',
@@ -44,7 +45,7 @@ export async function getProfile(uid: string): Promise<Profile | null> {
   return snap.exists() ? (snap.data() as Profile) : null
 }
 
-export type ProfileUpdate =Partial<Pick<Profile, 'allergens' | 'currentState' | 'energyLevel'>>
+export type ProfileUpdate =Partial<Pick<Profile, 'name' | 'allergens' |'currentState' | 'energyLevel'>>
 
 export async function updateProfile(uid: string, changes: ProfileUpdate) {
   await updateDoc(profileRef(uid), { ...changes, updatedAt: serverTimestamp() })

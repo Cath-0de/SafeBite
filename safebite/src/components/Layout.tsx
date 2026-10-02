@@ -6,7 +6,7 @@ import AuthDialog from './AuthDialog'
 import ProfileSetup from '../pages/ProfileSetup'
 
 export default function Layout() {
-  const { user, loading, needsSetup } = useAuth()
+  const { user, profile, loading, needsSetup } = useAuth()
   const [authOpen, setAuthOpen] = useState(false)
 
   // Reset once signed in, so the dialog doesn't reappear after a later sign-out.
@@ -28,7 +28,7 @@ export default function Layout() {
               {user.photoURL ? (
                 <img src={user.photoURL} alt="" referrerPolicy="no-referrer" />
               ) : (
-                (user.displayName ?? user.email ?? '?').charAt(0).toUpperCase()
+                (profile?.name || user.displayName || user.email || '?').charAt(0).toUpperCase()
               )}
             </NavLink>
           ) : (

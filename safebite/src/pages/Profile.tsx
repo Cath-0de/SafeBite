@@ -17,10 +17,7 @@ export default function Profile() {
   return (
     <>
       <h1>Your profile</h1>
-      <p className="muted">
-        {user.displayName && <>{user.displayName} · </>}
-        {user.email}
-      </p>
+      <p className="muted">{user.email}</p>
       {profile ? (
         <ProfileForm profile={profile} submitLabel="Save changes" />
       ) : (
