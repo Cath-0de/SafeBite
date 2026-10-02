@@ -39,7 +39,12 @@ export async function ensureProfile(user: User): Promise<Profile> {
   return (await getDoc(ref)).data() as Profile
 }
 
-export type ProfileUpdate = Partial<Pick<Profile, 'allergens' | 'currentState' | 'energyLevel'>>
+export async function getProfile(uid: string): Promise<Profile | null> {
+  const snap = await getDoc(profileRef(uid))
+  return snap.exists() ? (snap.data() as Profile) : null
+}
+
+export type ProfileUpdate =Partial<Pick<Profile, 'allergens' | 'currentState' | 'energyLevel'>>
 
 export async function updateProfile(uid: string, changes: ProfileUpdate) {
   await updateDoc(profileRef(uid), { ...changes, updatedAt: serverTimestamp() })

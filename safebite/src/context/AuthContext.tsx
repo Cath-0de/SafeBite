@@ -1,14 +1,27 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth'
+import {
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  type User,
+} from 'firebase/auth'
 import { auth } from '../lib/firebase'
-import { ensureProfile } from '../lib/db'
+import { ensureProfile, getProfile, updateProfile, type ProfileUpdate } from '../lib/db'
 import type { Profile } from '../lib/schema'
 
 interface AuthValue {
   user: User | null
   profile: Profile | null
   loading: boolean
-  signIn: () => Promise<void>
+  // True until the user has answered the profile setup questions.
+  needsSetup: boolean
+  signInWithGoogle: () => Promise<void>
+  signInWithEmail: (email: string, password: string) => Promise<void>
+  signUpWithEmail: (email: string, password: string) => Promise<void>
+  saveProfile: (changes: ProfileUpdate) => Promise<void>
   signOutUser: () => Promise<void>
 }
 
@@ -22,7 +35,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!auth) return
     return onAuthStateChanged(auth, async (u) => {
-      setUser(u)
       let p: Profile | null = null
       if (u) {
         try {
@@ -31,6 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error('Failed to load or create profile', err)
         }
       }
+      // Set both together so the UI never sees a signed-in user without their profile.
+      setUser(u)
       setProfile(p)
       setLoading(false)
     })
@@ -40,8 +54,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     profile,
     loading,
-    signIn: async () => {
+    // ensureProfile writes createdAt and updatedAt in the same request, so they
+    // stay equal until the first updateProfile call (the setup form).
+    needsSetup: profile !== null && profile.createdAt.isEqual(profile.updatedAt),
+    signInWithGoogle: async () => {
       if (auth) await signInWithPopup(auth, new GoogleAuthProvider())
+    },
+    signInWithEmail: async (email, password) => {
+      if (auth) await signInWithEmailAndPassword(auth, email, password)
+    },
+    signUpWithEmail: async (email, password) => {
+      if (auth) await createUserWithEmailAndPassword(auth, email, password)
+    },
+    saveProfile: async (changes) => {
+      if (!user) return
+      await updateProfile(user.uid, changes)
+      setProfile(await getProfile(user.uid))
     },
     signOutUser: async () => {
       if (auth) await signOut(auth)

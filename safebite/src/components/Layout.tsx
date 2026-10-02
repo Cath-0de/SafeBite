@@ -1,9 +1,16 @@
+import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { firebaseConfigured } from '../lib/firebase'
+import AuthDialog from './AuthDialog'
+import ProfileSetup from '../pages/ProfileSetup'
 
 export default function Layout() {
-  const { user, loading, signIn, signOutUser } = useAuth()
+  const { user, loading, needsSetup } = useAuth()
+  const [authOpen, setAuthOpen] = useState(false)
+
+  // Reset once signed in, so the dialog doesn't reappear after a later sign-out.
+  if (user && authOpen) setAuthOpen(false)
 
   return (
     <>
@@ -17,18 +24,22 @@ export default function Layout() {
           {!firebaseConfigured ? (
             <span className="muted">Firebase not configured</span>
           ) : loading ? null : user ? (
-            <>
-              <span className="muted">{user.displayName ?? user.email}</span>
-              <button onClick={signOutUser}>Sign out</button>
-            </>
+            <NavLink to="/profile" className="avatar" aria-label="Your profile" title={user.email ?? 'Your profile'}>
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="" referrerPolicy="no-referrer" />
+              ) : (
+                (user.displayName ?? user.email ?? '?').charAt(0).toUpperCase()
+              )}
+            </NavLink>
           ) : (
-            <button className="primary" onClick={signIn}>Sign in with Google</button>
+            <button className="primary" onClick={() => setAuthOpen(true)}>Sign in</button>
           )}
         </div>
       </header>
       <main>
-        <Outlet />
+        {needsSetup ? <ProfileSetup /> : <Outlet />}
       </main>
+      {authOpen && !user && <AuthDialog onClose={() => setAuthOpen(false)} />}
     </>
   )
 }
