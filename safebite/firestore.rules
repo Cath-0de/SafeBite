@@ -1,0 +1,94 @@
+rules_version = '2';
+
+// The browser talks to Firestore directly, so these rules are the only thing
+// protecting data. Any path not matched below is denied. Field shapes mirror
+// src/lib/schema.ts, so keep the two in sync.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function optionalString(field, maxLen) {
+      return !(field in incoming()) || (incoming()[field] is string && incoming()[field].size() <= maxLen);
+    }
+
+    function optionalList(field, maxLen) {
+      return !(field in incoming()) || (incoming()[field] is list && incoming()[field].size() <= maxLen);
+    }
+
+    // ---- profiles/{uid} ----
+    function validProfileFields() {
+      return incoming().keys().hasOnly(['email', 'createdAt', 'allergens', 'currentState', 'energyLevel', 'updatedAt'])
+        && incoming().keys().hasAll(['email', 'createdAt', 'allergens', 'currentState', 'energyLevel', 'updatedAt'])
+        && incoming().allergens is list && incoming().allergens.size() <= 50
+        && incoming().currentState in ['flare', 'remission']
+        && incoming().energyLevel in ['low', 'medium', 'high']
+        && incoming().updatedAt == request.time;
+    }
+
+    match /profiles/{uid} {
+      allow read, delete: if isOwner(uid);
+
+      allow create: if isOwner(uid)
+        && validProfileFields()
+        && incoming().email == request.auth.token.email
+        && incoming().createdAt == request.time;
+
+      allow update: if isOwner(uid)
+        && validProfileFields()
+        && incoming().email == resource.data.email
+        && incoming().createdAt == resource.data.createdAt;
+
+      // ---- profiles/{uid}/logs/{logId} ----
+      match /logs/{logId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && incoming().keys().hasOnly(['loggedAt', 'mealDescription', 'ingredients', 'symptomScore', 'notes'])
+          && incoming().keys().hasAll(['loggedAt', 'mealDescription', 'symptomScore'])
+          && incoming().loggedAt is timestamp
+          && incoming().mealDescription is string
+          && incoming().mealDescription.size() > 0 && incoming().mealDescription.size() <= 1000
+          && incoming().symptomScore is number
+          && incoming().symptomScore >= 0 && incoming().symptomScore <= 10
+          && optionalList('ingredients', 100)
+          && optionalString('notes', 2000);
+      }
+
+      // ---- profiles/{uid}/variants/{variantId} ----
+      match /variants/{variantId} {
+        function validVariantFields() {
+          return incoming().keys().hasOnly(['baseRecipeId', 'baseRecipeName', 'swaps', 'createdAt'])
+            && incoming().keys().hasAll(['baseRecipeId', 'baseRecipeName', 'swaps', 'createdAt'])
+            && incoming().baseRecipeId is string
+            && incoming().baseRecipeName is string && incoming().baseRecipeName.size() <= 300
+            && incoming().swaps is list && incoming().swaps.size() <= 50;
+        }
+
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && validVariantFields() && incoming().createdAt == request.time;
+        allow update: if isOwner(uid) && validVariantFields() && incoming().createdAt == resource.data.createdAt;
+      }
+
+      // ---- profiles/{uid}/triggers/current ----
+      // Written only by the ML pipeline via the Admin SDK (which bypasses rules).
+      match /triggers/{docId} {
+        allow read: if isOwner(uid) && docId == 'current';
+        allow write: if false;
+      }
+    }
+
+    // ---- rules/{ruleId} ----
+    // Shared curated reference data: any signed-in user can read, nobody writes
+    // from the client. Seed/edit it from the Firebase console or an admin script.
+    match /rules/{ruleId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}

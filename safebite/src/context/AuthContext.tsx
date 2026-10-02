@@ -1,9 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth'
 import { auth } from '../lib/firebase'
+import { ensureProfile } from '../lib/db'
+import type { Profile } from '../lib/schema'
 
 interface AuthValue {
   user: User | null
+  profile: Profile | null
   loading: boolean
   signIn: () => Promise<void>
   signOutUser: () => Promise<void>
@@ -13,18 +16,29 @@ const AuthContext = createContext<AuthValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(Boolean(auth))
 
   useEffect(() => {
     if (!auth) return
-    return onAuthStateChanged(auth, (u) => {
+    return onAuthStateChanged(auth, async (u) => {
       setUser(u)
+      let p: Profile | null = null
+      if (u) {
+        try {
+          p = await ensureProfile(u)
+        } catch (err) {
+          console.error('Failed to load or create profile', err)
+        }
+      }
+      setProfile(p)
       setLoading(false)
     })
   }, [])
 
   const value: AuthValue = {
     user,
+    profile,
     loading,
     signIn: async () => {
       if (auth) await signInWithPopup(auth, new GoogleAuthProvider())
