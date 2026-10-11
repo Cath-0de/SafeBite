@@ -5,6 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>safebite</title>
+    <script>
+      // Apply the saved light/dark choice (see src/lib/theme.ts) before the
+      // page draws, falling back to the device's setting.
+      try {
+        var saved = localStorage.getItem('safebite-theme')
+      } catch (e) {}
+      document.documentElement.dataset.theme =
+        saved === 'light' || saved === 'dark'
+          ? saved
+          : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -3,21 +3,22 @@ import type { Timestamp } from 'firebase/firestore'
 // Firestore document shapes. firestore.rules enforces the same fields and
 // enums, so keep the two in sync when either changes.
 
+// The only values allowed for the two health toggles.
 export type CurrentState = 'flare' | 'remission'
 export type EnergyLevel = 'low' | 'medium' | 'high'
 
-// profiles/{uid}
+// profiles/{uid}: one document per user, keyed by their Firebase Auth uid.
 export interface Profile {
   email: string
   name: string // empty until the user answers the setup questions
   createdAt: Timestamp
-  allergens: string[]
+  allergens: string[] // ids from lib/allergens.ts
   currentState: CurrentState
   energyLevel: EnergyLevel
-  updatedAt: Timestamp
+  updatedAt: Timestamp // equals createdAt until the setup form is first saved
 }
 
-// profiles/{uid}/logs/{logId}
+// profiles/{uid}/logs/{logId}: one logged meal with its symptom score.
 export interface MealLog {
   loggedAt: Timestamp
   mealDescription: string
@@ -26,7 +27,7 @@ export interface MealLog {
   notes?: string
 }
 
-// profiles/{uid}/variants/{variantId}
+// profiles/{uid}/variants/{variantId}: a recipe plus the ingredient swaps the user chose.
 export interface Swap {
   original: string
   substitute: string
@@ -41,7 +42,7 @@ export interface RecipeVariant {
 
 // profiles/{uid}/triggers/current (written by the ML pipeline, read-only to the client)
 export interface Triggers {
-  ingredientWeights: Record<string, number>
+  ingredientWeights: Record<string, number> // ingredient -> how strongly it correlates with symptoms
   lastTrainedAt: Timestamp
   loggedMealCount: number
 }
@@ -50,7 +51,7 @@ export interface Triggers {
 export interface IngredientRule {
   ingredientName: string
   category: string
-  flareUnsafe: boolean
-  matchesAllergenTags: string[]
-  safeSubstitutes: string[]
+  flareUnsafe: boolean // true = hide or flag this ingredient during a flare-up
+  matchesAllergenTags: string[] // allergen ids (lib/allergens.ts) this ingredient counts as
+  safeSubstitutes: string[] // what the swapper offers instead
 }

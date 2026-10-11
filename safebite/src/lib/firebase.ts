@@ -1,7 +1,10 @@
+// Connects the app to the Firebase project. Exports `auth` (sign-in) and `db`
+// (Firestore database), which the rest of the app imports from here.
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
+// The project's keys, read from .env.local (see .env.example for the names).
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -11,9 +14,11 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
+// False when .env.local is missing, so the app can show a message instead of crashing.
 export const firebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId)
 
 const app = firebaseConfigured ? initializeApp(firebaseConfig) : null
 
+// Both are null when Firebase isn't configured, so callers check before using them.
 export const auth = app ? getAuth(app) : null
 export const db = app ? getFirestore(app) : null
