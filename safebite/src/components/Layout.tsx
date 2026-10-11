@@ -7,6 +7,13 @@ import { firebaseConfigured } from '../lib/firebase'
 import AuthDialog from './AuthDialog'
 import ProfileSetup from '../pages/ProfileSetup'
 
+// The main nav links. Add an entry here to add a tab.
+const tabs = [
+  { to: '/', icon: '🏠', label: 'Home' },
+  { to: '/recipes', icon: '🍲', label: 'Recipes' },
+  { to: '/scan', icon: '📷', label: 'Scan' },
+]
+
 export default function Layout() {
   const { user, profile, loading, needsSetup } = useAuth()
   // Whether the sign-in popup is showing.
@@ -19,9 +26,13 @@ export default function Layout() {
     <>
       <header className="site-header">
         <NavLink to="/" className="brand">SafeBite</NavLink>
-        <nav>
-          <NavLink to="/recipes">Recipes</NavLink>
-          <NavLink to="/scan">Scan</NavLink>
+        {/* Pill links in the header; on phones the CSS pins this to the bottom as a tab bar. */}
+        <nav className="tabs">
+          {tabs.map((t) => (
+            <NavLink key={t.to} to={t.to} end={t.to === '/'}>
+              <span aria-hidden="true">{t.icon}</span> {t.label}
+            </NavLink>
+          ))}
         </nav>
         {/* Right side of the header: nothing while loading, the avatar when
             signed in, otherwise the "Sign in" button. */}

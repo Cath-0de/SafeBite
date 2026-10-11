@@ -3,17 +3,22 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
+  limit,
+  orderBy,
+  query,
   runTransaction,
+  setDoc,
   serverTimestamp,
   updateDoc,
   type Timestamp,
 } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 import { db } from './firebase'
-import type { IngredientRule, MealLog, Profile, RecipeVariant, Swap, Triggers } from './schema'
+import type { IngredientRule, MealLog, Profile, RecentRecipe, SavedRecipe, RecipeVariant, Swap, Triggers } from './schema'
 
 // Returns the database, or throws a clear error if Firebase isn't configured.
 function requireDb() {
@@ -58,6 +63,49 @@ export type ProfileUpdate =Partial<Pick<Profile, 'name' | 'allergens' |'currentS
 // Saves the changed fields and stamps updatedAt with the server's time.
 export async function updateProfile(uid: string, changes: ProfileUpdate) {
   await updateDoc(profileRef(uid), { ...changes, updatedAt: serverTimestamp() })
+}
+
+// ---- Recently viewed recipes: profiles/{uid}/recent/{mealId} ----
+
+// Keyed by the recipe id, so viewing a recipe again just moves it to the front.
+// shortcut: old entries are never deleted, prune if users view hundreds of recipes.
+export async function markRecipeViewed(uid: string, meal: { id: string; name: string; thumbnail: string }) {
+  await setDoc(doc(requireDb(), 'profiles', uid, 'recent', meal.id), {
+    name: meal.name,
+    thumbnail: meal.thumbnail,
+    viewedAt: serverTimestamp(),
+  })
+}
+
+// The most recently viewed recipes, newest first.
+export async function getRecentRecipes(uid: string, count = 4) {
+  const q = query(collection(requireDb(), 'profiles', uid, 'recent'), orderBy('viewedAt', 'desc'), limit(count))
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as RecentRecipe) }))
+}
+
+// ---- Saved (starred) recipes: profiles/{uid}/saved/{mealId} ----
+
+export async function saveRecipe(uid: string, meal: { id: string; name: string; thumbnail: string }) {
+  await setDoc(doc(requireDb(), 'profiles', uid, 'saved', meal.id), {
+    name: meal.name,
+    thumbnail: meal.thumbnail,
+    savedAt: serverTimestamp(),
+  })
+}
+
+export async function unsaveRecipe(uid: string, mealId: string) {
+  await deleteDoc(doc(requireDb(), 'profiles', uid, 'saved', mealId))
+}
+
+export async function isRecipeSaved(uid: string, mealId: string) {
+  return (await getDoc(doc(requireDb(), 'profiles', uid, 'saved', mealId))).exists()
+}
+
+// All saved recipes, newest first.
+export async function getSavedRecipes(uid: string) {
+  const snap = await getDocs(query(collection(requireDb(), 'profiles', uid, 'saved'), orderBy('savedAt', 'desc')))
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as SavedRecipe) }))
 }
 
 // ---- Meal & symptom logs: profiles/{uid}/logs (no UI uses these yet) ----

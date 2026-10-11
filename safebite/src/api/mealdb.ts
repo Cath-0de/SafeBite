@@ -248,5 +248,13 @@ export const getMeal = async (id: string): Promise<Meal | undefined> =>
 // An empty name search returns the API's default page of recipes.
 export const browseMeals = () => fetchMeals('search.php?s=')
 
+// Every recipe in a category, as id, name and thumbnail only (that's all filter.php returns).
+export async function mealsInCategory(category: string) {
+  const data = await getJson<{ meals: { idMeal: string; strMeal: string; strMealThumb: string }[] | null }>(
+    `filter.php?c=${encodeURIComponent(category)}`,
+  )
+  return (data.meals ?? []).map((m) => ({ id: m.idMeal, name: m.strMeal, thumbnail: m.strMealThumb }))
+}
+
 // One random recipe (not used by any page yet).
 export const randomMeal = async () => (await fetchMeals('random.php'))[0]

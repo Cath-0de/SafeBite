@@ -4,6 +4,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getMeal, type Meal } from '../api/mealdb'
+import { useAuth } from '../context/AuthContext'
+import { markRecipeViewed } from '../lib/db'
+import SaveButton from '../components/SaveButton'
 
 export default function RecipeDetail() {
   const { id = '' } = useParams()
@@ -30,6 +33,13 @@ export default function RecipeDetail() {
     }
   }, [id])
 
+  // Remember this recipe for the home page's "continue where you left off".
+  const { user } = useAuth()
+  const viewed = current?.meal
+  useEffect(() => {
+    if (user && viewed) markRecipeViewed(user.uid, viewed).catch((err) => console.error('Could not save recent recipe', err))
+  }, [user, viewed])
+
   // Going back keeps the user's search results. If they opened this page
   // directly (no earlier page in the app), go to the recipes page instead.
   const cameFromApp = location.key !== 'default'
@@ -53,7 +63,10 @@ export default function RecipeDetail() {
       <div className="recipe-header">
         <img src={meal.thumbnail} alt="" />
         <div>
-          <h1>{meal.name}</h1>
+          <div className="title-row">
+            <h1>{meal.name}</h1>
+            <SaveButton meal={meal} />
+          </div>
           <p className="muted">{meal.category} · {meal.area}</p>
           {meal.tags.length > 0 && (
             <ul className="tags">

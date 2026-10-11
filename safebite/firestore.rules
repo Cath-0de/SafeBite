@@ -46,6 +46,28 @@ service cloud.firestore {
         && incoming().email == resource.data.email
         && incoming().createdAt == resource.data.createdAt;
 
+      // ---- profiles/{uid}/recent/{mealId} ----
+      match /recent/{mealId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && incoming().keys().hasOnly(['name', 'thumbnail', 'viewedAt'])
+          && incoming().keys().hasAll(['name', 'thumbnail', 'viewedAt'])
+          && incoming().name is string && incoming().name.size() <= 300
+          && incoming().thumbnail is string && incoming().thumbnail.size() <= 500
+          && incoming().viewedAt == request.time;
+      }
+
+      // ---- profiles/{uid}/saved/{mealId} ----
+      match /saved/{mealId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && incoming().keys().hasOnly(['name', 'thumbnail', 'savedAt'])
+          && incoming().keys().hasAll(['name', 'thumbnail', 'savedAt'])
+          && incoming().name is string && incoming().name.size() <= 300
+          && incoming().thumbnail is string && incoming().thumbnail.size() <= 500
+          && incoming().savedAt == request.time;
+      }
+
       // ---- profiles/{uid}/logs/{logId} ----
       match /logs/{logId} {
         allow read, delete: if isOwner(uid);

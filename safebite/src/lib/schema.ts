@@ -18,6 +18,20 @@ export interface Profile {
   updatedAt: Timestamp // equals createdAt until the setup form is first saved
 }
 
+// profiles/{uid}/recent/{mealId}: a recipe the user opened, for "continue where you left off".
+export interface RecentRecipe {
+  name: string
+  thumbnail: string
+  viewedAt: Timestamp
+}
+
+// profiles/{uid}/saved/{mealId}: a recipe the user starred.
+export interface SavedRecipe {
+  name: string
+  thumbnail: string
+  savedAt: Timestamp
+}
+
 // profiles/{uid}/logs/{logId}: one logged meal with its symptom score.
 export interface MealLog {
   loggedAt: Timestamp

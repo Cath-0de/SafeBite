@@ -48,9 +48,25 @@ main { max-width: 960px; margin: 0 auto; padding: 2rem 1rem 4rem; }
   display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
   padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface);
 }
-.site-header nav { display: flex; gap: 1rem; flex: 1; }
 .site-header a { text-decoration: none; color: var(--muted); }
-.site-header a.active { color: var(--accent); font-weight: 600; }
+
+/* Main nav (Layout.tsx): rounded pills in the header, the current page filled in. */
+.tabs { display: flex; gap: 0.5rem; flex: 1; }
+.tabs a { padding: 0.4rem 0.9rem; border-radius: 999px; transition: background 0.15s; }
+.tabs a:hover { background: var(--border); }
+.tabs a.active { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+/* On phones the nav becomes a tab bar fixed to the bottom of the screen. */
+@media (max-width: 600px) {
+  .tabs {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; justify-content: space-around;
+    padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
+    background: var(--surface); border-top: 1px solid var(--border);
+  }
+  .tabs a { display: flex; flex-direction: column; align-items: center; font-size: 0.8rem; }
+  .tabs a span { font-size: 1.3rem; }
+  .site-header { justify-content: space-between; }
+  main { padding-bottom: 6rem; }
+}
 .site-header .brand { font-weight: 700; font-size: 1.15rem; color: var(--accent); }
 .auth { display: flex; align-items: center; gap: 0.75rem; }
 .site-header .avatar, .site-header .avatar.active {
@@ -69,10 +85,20 @@ button, .button {
 button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 button:disabled { opacity: 0.5; cursor: default; }
 
+/* Star button next to a recipe's title (SaveButton.tsx). */
+.title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.star { font-size: 1.6rem; line-height: 1; padding: 0.35rem 0.55rem; border-radius: 50%; color: var(--accent); flex-shrink: 0; }
+.star[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+
 /* Home page intro (Home.tsx). */
 .hero { padding: 3rem 0 2rem; max-width: 640px; }
 .hero h1 { font-size: 2.75rem; line-height: 1.1; }
 .hero p { color: var(--muted); font-size: 1.15rem; }
+/* "Continue where you left off" row on the home page: scrolls sideways when it overflows. */
+.section-title { font-size: 1.35rem; }
+.recent { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, 220px); gap: 1rem; overflow-x: auto; padding: 0.5rem 0 1rem; }
+.recent .card { transition: transform 0.15s; }
+.recent .card:hover { transform: translateY(-3px); }
 .actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap; }
 
 /* Card grid: home feature cards, recipe cards, and the product card. */
