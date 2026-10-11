@@ -90,7 +90,7 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
         />
       </fieldset>
 
-      {/* Question 2: is this for UC? Decides whether the flare/remission question shows. */}
+      {/* Question 2: is this for UC? Decides whether questions 4 and 5 show. */}
       <fieldset>
         <legend>Are you using SafeBite for ulcerative colitis (UC)?</legend>
         <p className="muted">Either way, you can add food allergies below.</p>
@@ -150,47 +150,50 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
         </div>
       </fieldset>
 
-      {/* Question 4: flare-up or remission (pick one). Only asked of UC users. */}
-      {hasUC && <fieldset>
-        <legend>How is your UC right now?</legend>
-        <div className="choices">
-          {STATES.map((s) => (
-            <label key={s.value} className="choice">
-              <input
-                type="radio"
-                name="currentState"
-                checked={currentState === s.value}
-                onChange={() => {
-                  setSaved(false)
-                  setCurrentState(s.value)
-                }}
-              />
-              {s.label} <span className="muted">· {s.hint}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>}
+      {/* Questions 4 and 5: UC flare state and energy. Only asked of UC users. */}
+      {hasUC && (
+        <>
+          <fieldset>
+            <legend>How is your UC right now?</legend>
+            <div className="choices">
+              {STATES.map((s) => (
+                <label key={s.value} className="choice">
+                  <input
+                    type="radio"
+                    name="currentState"
+                    checked={currentState === s.value}
+                    onChange={() => {
+                      setSaved(false)
+                      setCurrentState(s.value)
+                    }}
+                  />
+                  {s.label} <span className="muted">· {s.hint}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
-      {/* Question 5: energy level (pick one). */}
-      <fieldset>
-        <legend>How is your energy today?</legend>
-        <div className="choices">
-          {ENERGY.map((l) => (
-            <label key={l.value} className="choice">
-              <input
-                type="radio"
-                name="energyLevel"
-                checked={energyLevel === l.value}
-                onChange={() => {
-                  setSaved(false)
-                  setEnergyLevel(l.value)
-                }}
-              />
-              {l.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+          <fieldset>
+            <legend>How is your energy today?</legend>
+            <div className="choices">
+              {ENERGY.map((l) => (
+                <label key={l.value} className="choice">
+                  <input
+                    type="radio"
+                    name="energyLevel"
+                    checked={energyLevel === l.value}
+                    onChange={() => {
+                      setSaved(false)
+                      setEnergyLevel(l.value)
+                    }}
+                  />
+                  {l.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </>
+      )}
 
       {error && <p className="error">{error}</p>}
       <div className="actions">
