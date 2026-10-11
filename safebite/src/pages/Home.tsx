@@ -1,5 +1,7 @@
+// The landing page (route "/"): a short intro and links to the main features.
 import { Link } from 'react-router-dom'
 
+// The feature cards shown under the intro. Add an entry here to add a card.
 const features = [
   { to: '/recipes', title: 'Recipe discovery', text: 'Find meals and see which ingredients might be a problem for you.' },
   { to: '/scan', title: 'Barcode lookup', text: 'Check packaged foods for ingredients and allergens.' },
@@ -8,6 +10,7 @@ const features = [
 export default function Home() {
   return (
     <>
+      {/* Intro text and the two main buttons. */}
       <section className="hero">
         <h1>Eat with confidence.</h1>
         <p>
@@ -19,6 +22,7 @@ export default function Home() {
           <Link to="/scan" className="button">Scan a product</Link>
         </div>
       </section>
+      {/* One clickable card per feature. */}
       <section className="cards">
         {features.map((f) => (
           <Link key={f.to} to={f.to} className="card">

@@ -1,9 +1,13 @@
+// The sign-in popup. One dialog with two modes: "Sign in" and "Create account"
+// (email + password), plus a "Continue with Google" button in both.
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { FirebaseError } from 'firebase/app'
 import { useAuth } from '../context/AuthContext'
 
 type Mode = 'signin' | 'signup'
 
+// Turns Firebase's error codes into messages a user can understand.
+// Returns '' for "user closed the Google popup", which isn't really an error.
 function authErrorMessage(err: unknown) {
   const code = err instanceof FirebaseError ? err.code : ''
   switch (code) {
@@ -40,11 +44,14 @@ export default function AuthDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const signup = mode === 'signup'
 
+  // Open the <dialog> as a modal (dimmed backdrop, Esc to close) when it mounts.
   useEffect(() => {
     const dialog = ref.current
     if (dialog && !dialog.open) dialog.showModal()
   }, [])
 
+  // Shared wrapper for every sign-in action: disables the buttons while it
+  // runs and shows a readable message if it fails.
   async function run(action: () => Promise<void>) {
     setBusy(true)
     setError('')
@@ -57,6 +64,7 @@ export default function AuthDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Email/password form submit: creates the account in signup mode, signs in otherwise.
   function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (signup && password !== confirm) {
@@ -66,6 +74,7 @@ export default function AuthDialog({ onClose }: { onClose: () => void }) {
     run(() => (signup ? signUpWithEmail(email.trim(), password) : signInWithEmail(email.trim(), password)))
   }
 
+  // Flip between "Sign in" and "Create account" without closing the popup.
   function switchMode(next: Mode) {
     setMode(next)
     setError('')
@@ -77,6 +86,8 @@ export default function AuthDialog({ onClose }: { onClose: () => void }) {
       ref={ref}
       className="auth-dialog"
       onClose={onClose}
+      // A click on the dialog element itself (not its contents) is a click on
+      // the dimmed backdrop, so close.
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
@@ -84,6 +95,7 @@ export default function AuthDialog({ onClose }: { onClose: () => void }) {
       <div className="auth-dialog-body">
         <button type="button" className="close" aria-label="Close" onClick={onClose}>×</button>
         <h2>{signup ? 'Create your account' : 'Sign in'}</h2>
+        {/* Email + password form. The confirm field only appears in signup mode. */}
         <form className="stack" onSubmit={onSubmit}>
           <label>
             Email
@@ -118,6 +130,7 @@ export default function AuthDialog({ onClose }: { onClose: () => void }) {
           </button>
         </form>
         <p className="divider">or</p>
+        {/* Google sign-in, and the button that switches between the two modes. */}
         <div className="stack">
           <button type="button" disabled={busy} onClick={() => run(signInWithGoogle)}>Continue with Google</button>
           {signup ? (
