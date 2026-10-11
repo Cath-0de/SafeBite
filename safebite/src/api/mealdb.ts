@@ -44,7 +44,36 @@ async function fetchMeals(path: string): Promise<Meal[]> {
   return (data.meals ?? []).map(toMeal)
 }
 
-export const searchMeals = (query: string) =>
-  fetchMeals(`search.php?s=${encodeURIComponent(query)}`)
+// filter.php returns only id, name and thumbnail, so callers look up the full recipe by id.
+async function fetchMealIds(path: string): Promise<string[]> {
+  const res = await fetch(`${BASE}/${path}`)
+  if (!res.ok) throw new Error(`TheMealDB request failed (${res.status})`)
+  const data: { meals: { idMeal: string }[] | null } = await res.json()
+  return (data.meals ?? []).map((m) => m.idMeal)
+}
+
+// Each category/ingredient match costs one lookup request, so cap how many we add.
+const MAX_EXTRA_MATCHES = 12
+
+// search.php only matches recipe names (so "pasta" finds a single recipe), so
+// also include recipes whose category or main ingredient matches the query.
+export async function searchMeals(query: string): Promise<Meal[]> {
+  const q = encodeURIComponent(query)
+  const ingredient = encodeURIComponent(query.replace(/\s+/g, '_'))
+  const [byName, byCategory, byIngredient] = await Promise.all([
+    fetchMeals(`search.php?s=${q}`),
+    fetchMealIds(`filter.php?c=${q}`),
+    fetchMealIds(`filter.php?i=${ingredient}`),
+  ])
+  const found = new Set(byName.map((m) => m.id))
+  const extraIds = [...new Set([...byCategory, ...byIngredient])]
+    .filter((id) => !found.has(id))
+    .slice(0, MAX_EXTRA_MATCHES)
+  const extras = await Promise.all(extraIds.map((id) => fetchMeals(`lookup.php?i=${id}`)))
+  return [...byName, ...extras.flat()]
+}
+
+// An empty name search returns the API's default page of recipes.
+export const browseMeals = () => fetchMeals('search.php?s=')
 
 export const randomMeal = async () => (await fetchMeals('random.php'))[0]

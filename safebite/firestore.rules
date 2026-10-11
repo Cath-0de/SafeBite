@@ -24,8 +24,9 @@ service cloud.firestore {
 
     // ---- profiles/{uid} ----
     function validProfileFields() {
-      return incoming().keys().hasOnly(['email', 'createdAt', 'allergens', 'currentState', 'energyLevel', 'updatedAt'])
-        && incoming().keys().hasAll(['email', 'createdAt', 'allergens', 'currentState', 'energyLevel', 'updatedAt'])
+      return incoming().keys().hasOnly(['email', 'name', 'createdAt', 'allergens', 'currentState', 'energyLevel', 'updatedAt'])
+        && incoming().keys().hasAll(['email', 'name', 'createdAt', 'allergens', 'currentState', 'energyLevel', 'updatedAt'])
+        && incoming().name is string && incoming().name.size() <= 100
         && incoming().allergens is list && incoming().allergens.size() <= 50
         && incoming().currentState in ['flare', 'remission']
         && incoming().energyLevel in ['low', 'medium', 'high']
