@@ -4,8 +4,9 @@
 // The search is kept in the URL ("/recipes?q=pasta") so going back from a
 // recipe's page shows the same results again.
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { browseMeals, searchMeals, type Meal, type SearchResult } from '../api/mealdb'
+import RecipeCard from '../components/RecipeCard'
 
 // Recipes shown before any search, and how many search results each "Show more" reveals.
 const BROWSE_COUNT = 10
@@ -85,14 +86,7 @@ export default function Recipes() {
       {meals && !error && meals.length === 0 && <p className="muted">No recipes found.</p>}
       {/* One card per recipe, limited to the first `visible` of them. Each opens the recipe's page. */}
       <div className="cards">
-        {meals?.slice(0, visible).map((m) => (
-          <Link key={m.id} to={`/recipes/${m.id}`} className="card">
-            <img src={m.thumbnail} alt="" loading="lazy" />
-            <h2>{m.name}</h2>
-            <p className="muted">{m.category} · {m.area}</p>
-            <p className="ingredients">{m.ingredients.map((i) => i.name).join(', ')}</p>
-          </Link>
-        ))}
+        {meals?.slice(0, visible).map((m) => <RecipeCard key={m.id} meal={m} />)}
       </div>
       {/* "Show more" appears only while some loaded recipes are still hidden. */}
       {meals && meals.length > visible && (

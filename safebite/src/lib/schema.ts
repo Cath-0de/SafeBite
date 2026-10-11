@@ -12,7 +12,8 @@ export interface Profile {
   email: string
   name: string // empty until the user answers the setup questions
   createdAt: Timestamp
-  allergens: string[] // ids from lib/allergens.ts
+  allergens: string[] // ids from lib/allergens.ts, plus any allergies the user typed in (lowercase)
+  hasUC?: boolean // missing on profiles made before the question existed; treat as true
   currentState: CurrentState
   energyLevel: EnergyLevel
   updatedAt: Timestamp // equals createdAt until the setup form is first saved

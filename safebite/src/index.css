@@ -159,6 +159,23 @@ a.card:hover { border-color: var(--highlight); }
 }
 .choice:has(input:checked) { border-color: var(--accent); }
 .choice input { accent-color: var(--accent); margin: 0; }
+.choice .remove { border: none; background: none; padding: 0 0.25rem; font-size: 1.1rem; line-height: 1; color: var(--muted); }
+/* "Something else?" box under the allergy checkboxes. */
+.other-allergy { display: flex; gap: 0.5rem; margin-top: 0.75rem; max-width: 360px; }
+.other-allergy input {
+  flex: 1; font: inherit; padding: 0.5rem 0.75rem; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+/* Allergy warnings: chips naming the allergens and highlighted ingredients on
+   recipe cards (RecipeCard.tsx), and the box on a recipe's page (RecipeDetail.tsx). */
+.allergy-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.allergy-chip {
+  font-size: 0.8rem; font-weight: 600; padding: 0.1rem 0.55rem; border-radius: 999px;
+  background: var(--error); color: var(--surface);
+}
+.ingredients mark { background: none; color: var(--error); font-weight: 600; text-decoration: underline wavy; }
+.warning-box { margin-top: 1rem; padding: 0.75rem 1rem; border: 1px solid var(--error); border-radius: 8px; color: var(--error); }
+.ingredient-list li.flagged span:first-child { color: var(--error); font-weight: 600; }
 .setup .actions { align-items: center; }
 /* Account section at the bottom of the profile page. */
 .account { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); max-width: 640px; }

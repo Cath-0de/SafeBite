@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { ALLERGENS } from '../lib/allergens'
+import { ALLERGENS, allergenLabel } from '../lib/allergens'
 import type { CurrentState, EnergyLevel, Profile } from '../lib/schema'
 
 // The answer options for the UC state and energy questions. `value` is what
@@ -24,6 +24,10 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
   // Google accounts come with a name, so offer it as the starting answer.
   const [name, setName] = useState(profile.name || user?.displayName || '')
   const [allergens, setAllergens] = useState<string[]>(profile.allergens)
+  // What's typed in the "something else" box, before it's added.
+  const [otherAllergy, setOtherAllergy] = useState('')
+  // Profiles made before this question existed were all UC users.
+  const [hasUC, setHasUC] = useState(profile.hasUC ?? true)
   const [currentState, setCurrentState] = useState<CurrentState>(profile.currentState)
   const [energyLevel, setEnergyLevel] = useState<EnergyLevel>(profile.energyLevel)
   const [error, setError] = useState('')
@@ -36,14 +40,28 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
     setAllergens((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]))
   }
 
-  // Save all four answers to profiles/{uid} (via saveProfile in AuthContext).
+  // Allergies the user typed in themselves (anything that isn't a checkbox id).
+  const custom = allergens.filter((a) => !ALLERGENS.some((k) => k.id === a))
+
+  // Add the typed allergy. If it's one of the checkboxes ("dairy"), tick that instead.
+  function addOtherAllergy() {
+    const text = otherAllergy.trim().toLowerCase()
+    if (!text) return
+    const match = ALLERGENS.find((a) => a.id === text || a.label.toLowerCase() === text)
+    const id = match?.id ?? text
+    setSaved(false)
+    setAllergens((prev) => (prev.includes(id) ? prev : [...prev, id]))
+    setOtherAllergy('')
+  }
+
+  // Save all the answers to profiles/{uid} (via saveProfile in AuthContext).
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError('')
     setSaved(false)
     try {
-      await saveProfile({ name: name.trim(), allergens, currentState, energyLevel })
+      await saveProfile({ name: name.trim(), allergens, hasUC, currentState, energyLevel })
       setSaved(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -72,7 +90,29 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
         />
       </fieldset>
 
-      {/* Question 2: allergens, one checkbox per entry in lib/allergens.ts. */}
+      {/* Question 2: is this for UC? Decides whether the flare/remission question shows. */}
+      <fieldset>
+        <legend>Are you using SafeBite for ulcerative colitis (UC)?</legend>
+        <p className="muted">Either way, you can add food allergies below.</p>
+        <div className="choices">
+          {[{ value: true, label: 'Yes, I have UC' }, { value: false, label: 'No, just allergies' }].map((o) => (
+            <label key={o.label} className="choice">
+              <input
+                type="radio"
+                name="hasUC"
+                checked={hasUC === o.value}
+                onChange={() => {
+                  setSaved(false)
+                  setHasUC(o.value)
+                }}
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      {/* Question 3: allergens, one checkbox per entry in lib/allergens.ts, plus any typed in. */}
       <fieldset>
         <legend>Do you have any food allergies or restrictions?</legend>
         <p className="muted">Select all that apply, or leave blank if none.</p>
@@ -83,11 +123,35 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
               {a.label}
             </label>
           ))}
+          {/* Typed-in allergies, as chips that can be removed. */}
+          {custom.map((a) => (
+            <span key={a} className="choice">
+              {allergenLabel(a)}
+              <button type="button" className="remove" onClick={() => toggleAllergen(a)} aria-label={`Remove ${a}`}>×</button>
+            </span>
+          ))}
+        </div>
+        <div className="other-allergy">
+          <input
+            value={otherAllergy}
+            onChange={(e) => setOtherAllergy(e.target.value)}
+            // Enter adds the allergy instead of submitting the whole form.
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addOtherAllergy()
+              }
+            }}
+            placeholder="Something else? e.g. kiwi"
+            aria-label="Add another allergy"
+            maxLength={50}
+          />
+          <button type="button" onClick={addOtherAllergy} disabled={!otherAllergy.trim()}>Add</button>
         </div>
       </fieldset>
 
-      {/* Question 3: flare-up or remission (pick one). */}
-      <fieldset>
+      {/* Question 4: flare-up or remission (pick one). Only asked of UC users. */}
+      {hasUC && <fieldset>
         <legend>How is your UC right now?</legend>
         <div className="choices">
           {STATES.map((s) => (
@@ -105,9 +169,9 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
             </label>
           ))}
         </div>
-      </fieldset>
+      </fieldset>}
 
-      {/* Question 4: energy level (pick one). */}
+      {/* Question 5: energy level (pick one). */}
       <fieldset>
         <legend>How is your energy today?</legend>
         <div className="choices">

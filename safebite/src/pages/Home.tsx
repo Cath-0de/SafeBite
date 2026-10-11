@@ -1,16 +1,20 @@
 // The landing page (route "/"): a greeting, a quick search, the user's saved
 // (starred) recipes, and recipes recommended from the ones the user has opened before. Navigation lives in the nav bar (Layout.tsx).
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getMeal, mealsInCategory } from '../api/mealdb'
+import { getMeal, mealsInCategory, type Meal } from '../api/mealdb'
+import RecipeCard from '../components/RecipeCard'
 import { getRecentRecipes, getSavedRecipes } from '../lib/db'
 
 type Suggestion = { id: string; name: string; thumbnail: string }
 
+// Full recipes (with ingredients, for the allergy warnings) for a list of ids. Skips ids that no longer exist.
+const fullMeals = async (ids: string[]) => (await Promise.all(ids.map(getMeal))).filter((m): m is Meal => Boolean(m))
+
 // Recipes from the categories the user opens most (e.g. "Chicken", "Dessert"),
 // skipping ones they've already seen. Shuffled so the picks change between visits.
-async function recommend(uid: string, count = 6): Promise<Suggestion[]> {
+async function recommend(uid: string, count = 6): Promise<Meal[]> {
   const recent = await getRecentRecipes(uid, 10)
   // The recent list only stores name and picture, so look up each recipe's category.
   const meals = await Promise.all(recent.map((r) => getMeal(r.id)))
@@ -26,7 +30,7 @@ async function recommend(uid: string, count = 6): Promise<Suggestion[]> {
   for (let i = 0; picks.length < count && pools.some((p) => i < p.length); i++) {
     for (const p of pools) if (p[i] && picks.length < count) picks.push(p[i])
   }
-  return picks
+  return fullMeals(picks.map((p) => p.id))
 }
 
 // Greeting that changes with the time of day.
@@ -40,8 +44,8 @@ export default function Home() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   // Recommendations and saved recipes, tagged with the user they belong to; null until loaded.
-  const [recs, setRecs] = useState<{ uid: string; items: Suggestion[] } | null>(null)
-  const [saved, setSaved] = useState<{ uid: string; items: Suggestion[] } | null>(null)
+  const [recs, setRecs] = useState<{ uid: string; items: Meal[] } | null>(null)
+  const [saved, setSaved] = useState<{ uid: string; items: Meal[] } | null>(null)
   const items = user && recs?.uid === user.uid ? recs.items : []
   const savedItems = user && saved?.uid === user.uid ? saved.items : []
 
@@ -51,6 +55,7 @@ export default function Home() {
     if (!user) return
     let cancelled = false
     getSavedRecipes(user.uid)
+      .then((list) => fullMeals(list.map((r) => r.id)))
       .then((items) => {
         if (!cancelled) setSaved({ uid: user.uid, items })
       })
@@ -78,7 +83,7 @@ export default function Home() {
         <p>
           {!user
             ? 'Sign in to find recipes that suit you, and pick up where you left off.'
-            : profile?.currentState === 'flare'
+            : profile?.hasUC !== false && profile?.currentState === 'flare'
               ? 'Go gently today. Here are some ideas to keep things easy.'
               : 'What are you in the mood for?'}
         </p>
@@ -93,12 +98,7 @@ export default function Home() {
         <section>
           <h2 className="section-title">★ Your saved recipes</h2>
           <div className="recent">
-            {savedItems.map((r) => (
-              <Link key={r.id} to={`/recipes/${r.id}`} className="card">
-                <img src={r.thumbnail} alt="" loading="lazy" />
-                <h2>{r.name}</h2>
-              </Link>
-            ))}
+            {savedItems.map((m) => <RecipeCard key={m.id} meal={m} />)}
           </div>
         </section>
       )}
@@ -108,12 +108,7 @@ export default function Home() {
         <section>
           <h2 className="section-title">Recommended for you</h2>
           <div className="recent">
-            {items.map((r) => (
-              <Link key={r.id} to={`/recipes/${r.id}`} className="card">
-                <img src={r.thumbnail} alt="" loading="lazy" />
-                <h2>{r.name}</h2>
-              </Link>
-            ))}
+            {items.map((m) => <RecipeCard key={m.id} meal={m} />)}
           </div>
         </section>
       )}

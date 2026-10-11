@@ -58,7 +58,7 @@ export async function getProfile(uid: string): Promise<Profile | null> {
 }
 
 // The profile fields the user is allowed to edit (not email or the timestamps).
-export type ProfileUpdate =Partial<Pick<Profile, 'name' | 'allergens' |'currentState' | 'energyLevel'>>
+export type ProfileUpdate =Partial<Pick<Profile, 'name' | 'allergens' | 'hasUC' | 'currentState' | 'energyLevel'>>
 
 // Saves the changed fields and stamps updatedAt with the server's time.
 export async function updateProfile(uid: string, changes: ProfileUpdate) {

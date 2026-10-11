@@ -6,6 +6,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getMeal, type Meal } from '../api/mealdb'
 import { useAuth } from '../context/AuthContext'
 import { markRecipeViewed } from '../lib/db'
+import { allergenRegex, allergensIn } from '../lib/allergens'
 import SaveButton from '../components/SaveButton'
 
 export default function RecipeDetail() {
@@ -34,7 +35,7 @@ export default function RecipeDetail() {
   }, [id])
 
   // Remember this recipe for the home page's "continue where you left off".
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const viewed = current?.meal
   useEffect(() => {
     if (user && viewed) markRecipeViewed(user.uid, viewed).catch((err) => console.error('Could not save recent recipe', err))
@@ -55,6 +56,11 @@ export default function RecipeDetail() {
   if (!meal) return <>{back}<p className="muted">Recipe not found.</p></>
 
   // The API sends instructions as one string with line breaks; show each non-empty line as a paragraph.
+  // The user's allergens found in this recipe, and a matcher to flag each ingredient row.
+  const myAllergens = profile?.allergens ?? []
+  const found = allergensIn(myAllergens, meal.ingredients.map((i) => i.name))
+  const re = allergenRegex(myAllergens)
+
   const steps = meal.instructions.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
 
   return (
@@ -68,6 +74,9 @@ export default function RecipeDetail() {
             <SaveButton meal={meal} />
           </div>
           <p className="muted">{meal.category} · {meal.area}</p>
+          {found.length > 0 && (
+            <p className="warning-box" role="alert">⚠️ Contains your allergens: {found.join(', ')}</p>
+          )}
           {meal.tags.length > 0 && (
             <ul className="tags">
               {meal.tags.map((t) => <li key={t}>{t}</li>)}
@@ -85,7 +94,7 @@ export default function RecipeDetail() {
         <h2>Ingredients</h2>
         <ul className="ingredient-list">
           {meal.ingredients.map((i, n) => (
-            <li key={n}>
+            <li key={n} className={re?.test(i.name) ? 'flagged' : undefined}>
               <span>{i.name}</span>
               <span className="muted">{i.measure}</span>
             </li>

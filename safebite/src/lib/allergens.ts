@@ -17,9 +17,23 @@ export const ALLERGENS = [
   { id: 'corn', label: 'Corn', words: ['corn', 'popcorn', 'sweetcorn', 'maize', 'polenta', 'grits', 'hominy', 'masa', 'dextrose', 'maltodextrin'] },
 ] as const
 
+// profiles/{uid}.allergens can also hold allergies the user typed in themselves
+// ("kiwi"). Those aren't ids above, so the typed text is the word to look for.
+const known = (id: string) => ALLERGENS.find((a) => a.id === id)
+const wordsFor = (id: string): readonly string[] => known(id)?.words ?? [id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')]
+const regexFor = (words: readonly string[]) => new RegExp(`\\b(?:${words.join('|')})`, 'i')
+
+// What to show the user for an allergen id: its label, or the typed text itself.
+export const allergenLabel = (id: string) => known(id)?.label ?? id
+
 // One case-insensitive regex for the given allergen ids, or null if none.
 // shortcut: plain word matching flags look-alikes ("cocoa butter", "eggplant"); use rules/ in Firestore when it is filled.
 export function allergenRegex(ids: string[]): RegExp | null {
-  const words = ALLERGENS.filter((a) => ids.includes(a.id)).flatMap((a) => a.words)
-  return words.length ? new RegExp(`\\b(?:${words.join('|')})`, 'i') : null
+  const words = ids.flatMap(wordsFor)
+  return words.length ? regexFor(words) : null
+}
+
+// The labels of the user's allergens that appear in any of the texts (e.g. a recipe's ingredient names).
+export function allergensIn(ids: string[], texts: string[]): string[] {
+  return ids.filter((id) => texts.some((t) => regexFor(wordsFor(id)).test(t))).map(allergenLabel)
 }
