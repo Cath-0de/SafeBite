@@ -111,6 +111,11 @@ a.card:hover { border-color: var(--highlight); }
 .card img { width: 100%; border-radius: 8px; aspect-ratio: 4 / 3; object-fit: cover; }
 .card p { margin: 0.25rem 0; }
 
+/* Camera view on the Scan page (CameraScanner.tsx). */
+.scanner { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; max-width: 480px; }
+.scanner video { width: 100%; border-radius: 12px; background: #000; aspect-ratio: 4 / 3; object-fit: cover; }
+.scanner p { margin: 0; }
+
 /* Search bar on the Recipes and Scan pages. */
 .search { display: flex; gap: 0.5rem; margin: 1rem 0; max-width: 480px; }
 .search input {

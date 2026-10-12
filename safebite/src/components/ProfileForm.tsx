@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { ALLERGENS, allergenLabel } from '../lib/allergens'
+import { parseAllergies } from '../lib/ai'
 import type { CurrentState, EnergyLevel, Profile } from '../lib/schema'
 
 // The answer options for the UC state and energy questions. `value` is what
@@ -26,6 +27,9 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
   const [allergens, setAllergens] = useState<string[]>(profile.allergens)
   // What's typed in the "something else" box, before it's added.
   const [otherAllergy, setOtherAllergy] = useState('')
+  // While Gemini reads the typed text, and what it found (or why it failed).
+  const [parsing, setParsing] = useState(false)
+  const [parseNote, setParseNote] = useState('')
   // Profiles made before this question existed were all UC users.
   const [hasUC, setHasUC] = useState(profile.hasUC ?? true)
   const [currentState, setCurrentState] = useState<CurrentState>(profile.currentState)
@@ -43,15 +47,42 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
   // Allergies the user typed in themselves (anything that isn't a checkbox id).
   const custom = allergens.filter((a) => !ALLERGENS.some((k) => k.id === a))
 
-  // Add the typed allergy. If it's one of the checkboxes ("dairy"), tick that instead.
-  function addOtherAllergy() {
+  // Tick or add each allergy, skipping ones already there.
+  function addAllergies(ids: string[]) {
+    setSaved(false)
+    setAllergens((prev) => [...new Set([...prev, ...ids])])
+  }
+
+  // Add the typed allergy. One or two words ("kiwi", "dairy") are added as typed,
+  // ticking the matching checkbox if there is one. Anything longer ("milk makes
+  // me bloated and I can't eat prawns") goes to Gemini to pick out the foods.
+  // Either way nothing is saved until the user checks the answers and presses Save.
+  async function addOtherAllergy() {
     const text = otherAllergy.trim().toLowerCase()
     if (!text) return
-    const match = ALLERGENS.find((a) => a.id === text || a.label.toLowerCase() === text)
-    const id = match?.id ?? text
-    setSaved(false)
-    setAllergens((prev) => (prev.includes(id) ? prev : [...prev, id]))
-    setOtherAllergy('')
+    setParseNote('')
+    if (text.split(/\s+/).length <= 2) {
+      const match = ALLERGENS.find((a) => a.id === text || a.label.toLowerCase() === text)
+      addAllergies([match?.id ?? text])
+      setOtherAllergy('')
+      return
+    }
+    setParsing(true)
+    try {
+      const found = await parseAllergies(text)
+      if (found.length) {
+        addAllergies(found)
+        setOtherAllergy('')
+        setParseNote(`Added ${found.map(allergenLabel).join(', ')}. Check these are right before saving.`)
+      } else {
+        setParseNote("Couldn't find any foods in that. Try listing them, e.g. \"kiwi, prawns\".")
+      }
+    } catch (err) {
+      console.error(err)
+      setParseNote("Couldn't read that right now. Try typing just the food's name.")
+    } finally {
+      setParsing(false)
+    }
   }
 
   // Save all the answers to profiles/{uid} (via saveProfile in AuthContext).
@@ -142,12 +173,15 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
                 addOtherAllergy()
               }
             }}
-            placeholder="Something else? e.g. kiwi"
+            placeholder="Something else? e.g. kiwi, or describe it in your own words"
             aria-label="Add another allergy"
             maxLength={50}
           />
-          <button type="button" onClick={addOtherAllergy} disabled={!otherAllergy.trim()}>Add</button>
+          <button type="button" onClick={addOtherAllergy} disabled={parsing || !otherAllergy.trim()}>
+            {parsing ? 'Reading…' : 'Add'}
+          </button>
         </div>
+        {parseNote && <p className="muted" role="status">{parseNote}</p>}
       </fieldset>
 
       {/* Questions 4 and 5: UC flare state and energy. Only asked of UC users. */}
