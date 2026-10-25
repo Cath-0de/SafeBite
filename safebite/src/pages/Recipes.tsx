@@ -1,11 +1,15 @@
 // The recipes page (route "/recipes"): shows recipes to browse on arrival and
 // lets the user search TheMealDB, including for several items at once
-// ("steak and pasta"). No allergen or flare filtering yet.
+// ("steak and pasta"). Signed-in users also see their own recipes and the ones
+// other users shared (matching the search, if there is one), and can add one.
+// No allergen or flare filtering yet.
 // The search is kept in the URL ("/recipes?q=pasta") so going back from a
 // recipe's page shows the same results again.
 import { useEffect, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { browseMeals, searchMeals, type Meal, type SearchResult } from '../api/mealdb'
+import { Link, useSearchParams } from 'react-router-dom'
+import { browseMeals, parseTerms, searchMeals, type Meal, type SearchResult } from '../api/mealdb'
+import { useAuth } from '../context/AuthContext'
+import { listUserRecipes, matchesTerms } from '../lib/recipes'
 import RecipeCard from '../components/RecipeCard'
 
 // Recipes shown before any search, and how many search results each "Show more" reveals.
@@ -28,6 +32,26 @@ export default function Recipes() {
   const meals = loaded?.meals ?? null
   const error = loaded?.error ?? ''
   const search = loaded?.search
+
+  // Recipes from users (the user's own, and everyone's shared ones), tagged with whose view they are.
+  const { user } = useAuth()
+  const [community, setCommunity] = useState<{ uid: string; meals: Meal[] } | null>(null)
+  const userRecipes = user && community?.uid === user.uid ? community.meals : []
+  const terms = q ? parseTerms(q) : []
+  const userMatches = q ? userRecipes.filter((m) => matchesTerms(m, terms)) : userRecipes
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    listUserRecipes(user.uid)
+      .then((meals) => {
+        if (!cancelled) setCommunity({ uid: user.uid, meals })
+      })
+      // The TheMealDB results still show without these.
+      .catch((err) => console.error('Could not load user recipes', err))
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   // Load recipes whenever the submitted search changes: search results if there
   // is a query, otherwise some recipes to browse. `cancelled` stops a late
@@ -59,7 +83,10 @@ export default function Recipes() {
 
   return (
     <>
-      <h1>Recipes</h1>
+      <div className="title-row">
+        <h1>Recipes</h1>
+        <Link className="button primary" to="/recipes/new">+ Add a recipe</Link>
+      </div>
       <form className="search" onSubmit={onSubmit}>
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Try chicken, rice, garlic" />
         <button className="primary" disabled={busy || !query.trim()}>{busy && q ? 'Searching…' : 'Search'}</button>
@@ -82,6 +109,15 @@ export default function Recipes() {
             <p className="muted">Showing the top {search.meals.length} of {search.total} matches. Add another item to narrow it down.</p>
           )}
         </div>
+      )}
+      {userMatches.length > 0 && (
+        <section>
+          <h2 className="section-title">From SafeBite users</h2>
+          <div className="cards">
+            {userMatches.map((m) => <RecipeCard key={m.id} meal={m} />)}
+          </div>
+          <h2 className="section-title">From TheMealDB</h2>
+        </section>
       )}
       {meals && !error && meals.length === 0 && <p className="muted">No recipes found.</p>}
       {/* One card per recipe, limited to the first `visible` of them. Each opens the recipe's page. */}

@@ -15,6 +15,8 @@ export interface Meal {
   // Links the API may or may not have for a recipe.
   youtube?: string
   source?: string
+  // Set only for recipes users wrote (lib/recipes.ts), never for TheMealDB's.
+  userRecipe?: { ownerId: string; shared: boolean }
 }
 
 // A recipe as the API sends it. Ingredients arrive as 20 numbered fields

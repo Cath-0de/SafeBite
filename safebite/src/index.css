@@ -172,6 +172,9 @@ a.card:hover { border-color: var(--accent); }
 .ingredient-list li.flagged .name { font-weight: 700; }
 .flag { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; font-weight: 700; }
 .flag svg { color: var(--contains); }
+/* A swap: the crossed-out ingredient, then what to use instead. */
+.ingredient-list li.flagged .name s { font-weight: 400; color: var(--muted); }
+.swap { font-weight: 700; color: var(--safe); }
 
 /* ---- Pages ---- */
 
@@ -203,15 +206,15 @@ a.card:hover { border-color: var(--accent); }
 .stack label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
 .stack .error { margin: 0; }
 
-/* The sign-in popup (AuthDialog.tsx). */
-.auth-dialog {
+/* Popups: sign in (AuthDialog.tsx) and log a meal (LogMealDialog.tsx). */
+.auth-dialog, .dialog {
   width: min(400px, calc(100vw - 2rem)); padding: 0; border-radius: var(--radius);
   border: 1px solid var(--border); background: var(--surface); color: var(--text);
 }
-.auth-dialog::backdrop { background: rgb(0 0 0 / 0.5); }
-.auth-dialog-body { position: relative; padding: 1.5rem; }
-.auth-dialog h2 { font-size: 1.4rem; margin: 0 0 1rem; }
-.auth-dialog .close { position: absolute; top: 0.5rem; right: 0.5rem; border: none; background: none; font-size: 1.5rem; padding: 0 0.75rem; }
+.auth-dialog::backdrop, .dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+.auth-dialog-body, .dialog-body { position: relative; padding: 1.5rem; }
+.auth-dialog h2, .dialog h2 { font-size: 1.4rem; margin: 0 0 1rem; }
+.auth-dialog .close, .dialog .close { position: absolute; top: 0.5rem; right: 0.5rem; border: none; background: none; font-size: 1.5rem; padding: 0 0.75rem; }
 .divider { display: flex; align-items: center; gap: 0.75rem; margin: 1rem 0; color: var(--muted); font-size: 0.9rem; }
 .divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
 
@@ -245,7 +248,39 @@ a.card:hover { border-color: var(--accent); }
 .account { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); max-width: 640px; }
 .account h2 { margin: 0 0 0.75rem; }
 
+/* Meal log (Log.tsx): the form's fields, the clickable feeling faces, and past entries. */
+.field { display: block; margin: 1.75rem 0; }
+.field-label { display: block; font-weight: 700; font-size: 1.1rem; margin-bottom: 0.75rem; }
+.field input, .field textarea { display: block; width: 100%; max-width: 480px; }
+.field textarea { min-height: 5rem; resize: vertical; }
+.rating .choice { position: relative; flex-direction: column; gap: 0.25rem; min-width: 5rem; text-align: center; }
+.rating .choice input { position: absolute; opacity: 0; pointer-events: none; }
+.rating .choice:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+.rating-symbol { font-size: 2rem; line-height: 1; }
+.log-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.75rem; max-width: 640px; }
+.log-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.log-card { display: flex; gap: 1rem; align-items: flex-start; }
+.card.log-card img { width: 72px; height: 72px; aspect-ratio: 1; flex-shrink: 0; }
+.log-body { flex: 1; min-width: 0; }
+.log-actions { display: flex; align-items: center; gap: 0.25rem 0.75rem; flex-wrap: wrap; margin-top: 0.25rem; }
+.log-actions .btn { padding-inline: 0.5rem; }
+.field-hint { display: block; font-size: 0.85rem; margin: -0.5rem 0 0.5rem; }
+.log-dialog { width: min(560px, calc(100vw - 2rem)); }
+.log-dialog .setup fieldset, .log-dialog .field { margin: 1.25rem 0; }
+.filters { border: none; padding: 0; margin: 0 0 1.25rem; }
+/* "What did you eat?" suggestions: 4 rows tall, scroll for the rest. */
+.suggestions {
+  list-style: none; margin: 0.25rem 0 0; padding: 0; max-width: 480px; max-height: calc(4 * 3.5rem);
+  overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+}
+.suggestions li { display: flex; align-items: center; gap: 0.75rem; height: 3.5rem; padding: 0 0.75rem; cursor: pointer; }
+.suggestions li:hover, .suggestions li.active { background: var(--panel); }
+.suggestions img { width: 2.5rem; height: 2.5rem; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+.suggestions li span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggestions .muted { font-size: 0.8rem; flex-shrink: 0; }
+
 /* Small text helpers used across pages. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .muted { color: var(--muted); }
 .error { color: var(--contains); }
 .ingredients { font-size: 0.9rem; color: var(--muted); }
@@ -256,7 +291,23 @@ a.card:hover { border-color: var(--accent); }
 .recipe-header { display: grid; grid-template-columns: minmax(0, 280px) 1fr; gap: 1.5rem; align-items: start; }
 .recipe-header img { width: 100%; border-radius: var(--radius); aspect-ratio: 1; object-fit: cover; }
 .recipe-header .actions { margin-top: 1rem; }
+.recipe-header.no-image { grid-template-columns: 1fr; }
 @media (max-width: 600px) { .recipe-header { grid-template-columns: 1fr; } }
+/* Stand-in for a missing photo: user recipes (RecipeCard.tsx) and meal suggestions (LogMealDialog.tsx). */
+.card-placeholder {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm); background: var(--panel); color: var(--muted);
+}
+.thumb-placeholder { width: 2.5rem; height: 2.5rem; border-radius: 6px; background: var(--panel); flex-shrink: 0; }
+.card .chip { margin: 0.5rem 0 0.25rem; }
+/* The add/edit recipe form (RecipeForm.tsx). */
+.recipe-form { max-width: 720px; }
+.field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+@media (max-width: 600px) { .field-pair { grid-template-columns: 1fr; } }
+.field-pair .field { margin-top: 0; }
+.ingredient-rows { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.75rem 0; }
+.ingredient-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: 0.5rem; }
+.ingredient-row input { min-width: 0; }
 .recipe section { margin-top: 2rem; }
 .recipe section h2 { font-size: 1.35rem; }
 .tags { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; padding: 0; margin: 0.5rem 0 0; }

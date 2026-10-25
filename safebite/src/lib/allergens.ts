@@ -37,3 +37,41 @@ export function allergenRegex(ids: string[]): RegExp | null {
 export function allergensIn(ids: string[], texts: string[]): string[] {
   return ids.filter((id) => texts.some((t) => regexFor(wordsFor(id)).test(t))).map(allergenLabel)
 }
+
+// Swaps offered for flagged ingredients. Most specific first: the first entry
+// for one of the user's allergies whose words match the ingredient wins.
+// shortcut: hand-picked starter list; read rules/{ruleId}.safeSubstitutes instead once that collection is filled.
+const SWAPS: { allergen: string; words: string[]; use: string }[] = [
+  { allergen: 'peanut', words: ['peanut butter'], use: 'sunflower seed butter' },
+  { allergen: 'peanut', words: ['peanut'], use: 'sunflower seeds' },
+  { allergen: 'tree-nut', words: ['almond milk'], use: 'oat milk' },
+  { allergen: 'tree-nut', words: ['nuts', 'almond', 'hazelnut', 'walnut', 'cashew', 'pecan', 'pistachio', 'macadamia'], use: 'sunflower or pumpkin seeds' },
+  { allergen: 'dairy', words: ['cream cheese'], use: 'dairy-free cream cheese' },
+  { allergen: 'dairy', words: ['butter'], use: 'olive oil or dairy-free butter' },
+  { allergen: 'dairy', words: ['cream'], use: 'coconut cream' },
+  { allergen: 'dairy', words: ['cheese'], use: 'dairy-free cheese' },
+  { allergen: 'dairy', words: ['milk'], use: 'oat milk' },
+  { allergen: 'dairy', words: ['yogurt', 'yoghurt'], use: 'coconut yogurt' },
+  { allergen: 'egg', words: ['egg'], use: 'flax egg (1 tbsp ground flaxseed + 3 tbsp water per egg)' },
+  { allergen: 'gluten', words: ['malt vinegar'], use: 'cider vinegar' },
+  { allergen: 'gluten', words: ['barley'], use: 'brown rice' },
+  { allergen: 'gluten', words: ['wheat', 'spelt', 'rye'], use: 'a gluten-free version' },
+  { allergen: 'soy', words: ['soy sauce'], use: 'coconut aminos' },
+  { allergen: 'fish', words: ['fish sauce'], use: 'coconut aminos' },
+  { allergen: 'fish', words: ['anchov'], use: 'capers or olives' },
+  { allergen: 'fish', words: ['fish', 'salmon', 'tuna', 'cod'], use: 'chicken or chickpeas' },
+  { allergen: 'shellfish', words: ['shrimp', 'prawn', 'crab', 'lobster'], use: 'chicken or white fish' },
+  { allergen: 'sesame', words: ['sesame oil'], use: 'olive oil' },
+  { allergen: 'sesame', words: ['sesame'], use: 'sunflower seeds' },
+  { allergen: 'corn', words: ['cornflour', 'cornstarch', 'corn starch'], use: 'arrowroot or potato starch' },
+  { allergen: 'corn', words: ['sweetcorn', 'corn'], use: 'peas' },
+]
+
+// What to use instead of one ingredient, or null if there's no swap for it.
+// Skips swaps that match another of the user's allergies ("chicken or white fish" for someone allergic to fish).
+export function substituteFor(ids: string[], ingredient: string): string | null {
+  const swap = SWAPS.find(
+    (s) => ids.includes(s.allergen) && regexFor(s.words).test(ingredient) && !allergenRegex(ids.filter((id) => id !== s.allergen))?.test(s.use),
+  )
+  return swap?.use ?? null
+}

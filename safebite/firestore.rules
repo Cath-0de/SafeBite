@@ -73,13 +73,16 @@ service cloud.firestore {
       match /logs/{logId} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
-          && incoming().keys().hasOnly(['loggedAt', 'mealDescription', 'ingredients', 'symptomScore', 'notes'])
+          && incoming().keys().hasOnly(['loggedAt', 'mealDescription', 'mealType', 'recipeId', 'recipeThumbnail', 'ingredients', 'symptomScore', 'notes'])
           && incoming().keys().hasAll(['loggedAt', 'mealDescription', 'symptomScore'])
           && incoming().loggedAt is timestamp
           && incoming().mealDescription is string
           && incoming().mealDescription.size() > 0 && incoming().mealDescription.size() <= 1000
           && incoming().symptomScore is number
           && incoming().symptomScore >= 0 && incoming().symptomScore <= 10
+          && (!('mealType' in incoming()) || incoming().mealType in ['breakfast', 'lunch', 'dinner', 'snack'])
+          && optionalString('recipeId', 40)
+          && optionalString('recipeThumbnail', 500)
           && optionalList('ingredients', 100)
           && optionalString('notes', 2000);
       }
@@ -105,6 +108,52 @@ service cloud.firestore {
         allow read: if isOwner(uid) && docId == 'current';
         allow write: if false;
       }
+    }
+
+    // ---- products/{barcode} ----
+    // Products users added when Open Food Facts lacked them. Any signed-in user
+    // can read them and add a new one; only the person who added one can edit it.
+    match /products/{barcode} {
+      function validProduct() {
+        return barcode.matches('^[0-9]{6,14}$')
+          && incoming().keys().hasOnly(['name', 'brand', 'ingredientsText', 'addedBy', 'updatedAt'])
+          && incoming().keys().hasAll(['name', 'brand', 'ingredientsText', 'addedBy', 'updatedAt'])
+          && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 300
+          && incoming().brand is string && incoming().brand.size() <= 200
+          && incoming().ingredientsText is string && incoming().ingredientsText.size() > 0 && incoming().ingredientsText.size() <= 5000
+          && incoming().addedBy == request.auth.uid
+          && incoming().updatedAt == request.time;
+      }
+
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && validProduct();
+      allow update: if request.auth != null && validProduct() && resource.data.addedBy == request.auth.uid;
+    }
+
+    // ---- recipes/{recipeId} ----
+    // Recipes users wrote. Private ones only the owner can read; shared ones any
+    // signed-in user can. Only the owner can change or delete one.
+    match /recipes/{recipeId} {
+      function validRecipe() {
+        return incoming().keys().hasOnly(['name', 'category', 'area', 'instructions', 'ingredients', 'tags', 'shared', 'ownerId', 'createdAt', 'updatedAt'])
+          && incoming().keys().hasAll(['name', 'category', 'area', 'instructions', 'ingredients', 'tags', 'shared', 'ownerId', 'createdAt', 'updatedAt'])
+          && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 200
+          && incoming().category is string && incoming().category.size() <= 60
+          && incoming().area is string && incoming().area.size() <= 60
+          && incoming().instructions is string && incoming().instructions.size() > 0 && incoming().instructions.size() <= 20000
+          && incoming().ingredients is list && incoming().ingredients.size() > 0 && incoming().ingredients.size() <= 50
+          && incoming().tags is list && incoming().tags.size() <= 10
+          && incoming().shared is bool
+          && incoming().ownerId == request.auth.uid
+          && incoming().updatedAt == request.time;
+      }
+
+      allow read: if request.auth != null && (resource.data.shared == true || resource.data.ownerId == request.auth.uid);
+      allow create: if request.auth != null && validRecipe() && incoming().createdAt == request.time;
+      allow update: if request.auth != null && validRecipe()
+        && resource.data.ownerId == request.auth.uid
+        && incoming().createdAt == resource.data.createdAt;
+      allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
     }
 
     // ---- rules/{ruleId} ----

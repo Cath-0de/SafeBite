@@ -8,9 +8,11 @@ import { ALLERGENS } from './allergens'
 // Flash-lite: faster, and its free-tier daily limit is separate from plain Flash's (only 20/day).
 const MODEL = 'gemini-3.5-flash-lite'
 
-const model = app
+const ai = app ? getAI(app, { backend: new GoogleAIBackend() }) : null
+
+const model = ai
   ? getGenerativeModel(
-      getAI(app, { backend: new GoogleAIBackend() }),
+      ai,
       {
         model: MODEL,
         // Make Gemini answer in exactly this JSON shape.
@@ -51,4 +53,52 @@ User's description: """${text}"""`
     .map((o) => o.trim().toLowerCase())
     .filter((o) => o && o.length <= 50)
   return [...new Set([...known, ...other])].slice(0, 20)
+}
+
+// ---- Finding a product's ingredients on the web (Scan page fallback) ----
+
+// Gemini with Google Search turned on, so it looks the product up instead of guessing.
+// Search grounding can't be combined with a JSON schema, so it answers in a fixed text format.
+const searchModel = ai ? getGenerativeModel(ai, { model: MODEL, tools: [{ googleSearch: {} }] }, { timeout: 30_000 }) : null
+
+export interface WebProduct {
+  name: string
+  brand: string
+  ingredientsText: string
+  sources: { title: string; uri: string }[] // the pages Google Search found
+  searchSuggestions: string // Google's required "search suggestions" HTML; show it alongside the result
+}
+
+// Asks Gemini to search the web for a product's ingredient list. Returns null
+// when it can't find this exact product. The answer can be wrong, so callers
+// must say so and never treat it as "safe".
+export async function findProductOnline(barcode: string, known?: { name: string; brand: string }): Promise<WebProduct | null> {
+  if (!searchModel) throw new Error('Firebase is not configured')
+  // Only digits go into the prompt from the barcode box.
+  if (!/^\d{6,14}$/.test(barcode)) throw new Error("That doesn't look like a barcode number")
+  const what = known?.name
+    ? `the product "${known.name}"${known.brand ? ` by ${known.brand}` : ''} (barcode ${barcode})`
+    : `the product with the barcode (UPC/EAN) ${barcode}`
+  const prompt = `Search the web for ${what} and find its ingredient list as printed on the packaging.
+Reply in exactly this format and nothing else:
+NAME: <product name>
+BRAND: <brand, or leave blank>
+INGREDIENTS: <the ingredient list, comma separated>
+If you can't find this exact product's ingredients, reply only: NOT FOUND`
+  const result = await searchModel.generateContent(prompt)
+  const text = result.response.text()
+  if (/NOT FOUND/i.test(text)) return null
+  // One "KEY: value" line; tolerates markdown like "**NAME:**".
+  const field = (key: string, max: number) =>
+    (text.match(new RegExp(`^[ \\t*]*${key}[ \\t*]*:(.*)$`, 'im'))?.[1] ?? '').replace(/^[\s*]+|[\s*]+$/g, '').slice(0, max)
+  const ingredientsText = field('INGREDIENTS', 3000)
+  if (!ingredientsText) return null
+  const meta = result.response.candidates?.[0]?.groundingMetadata
+  return {
+    name: field('NAME', 300) || known?.name || 'Unknown product',
+    brand: field('BRAND', 200) || known?.brand || '',
+    ingredientsText,
+    sources: (meta?.groundingChunks ?? []).flatMap((c) => (c.web?.uri ? [{ title: c.web.title || c.web.uri, uri: c.web.uri }] : [])),
+    searchSuggestions: meta?.searchEntryPoint?.renderedContent ?? '',
+  }
 }

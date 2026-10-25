@@ -3,21 +3,22 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getMeal, mealsInCategory, type Meal } from '../api/mealdb'
+import { mealsInCategory, type Meal } from '../api/mealdb'
+import { getRecipe } from '../lib/recipes'
 import RecipeCard from '../components/RecipeCard'
 import { getRecentRecipes, getSavedRecipes } from '../lib/db'
 
 type Suggestion = { id: string; name: string; thumbnail: string }
 
 // Full recipes (with ingredients, for the allergy warnings) for a list of ids. Skips ids that no longer exist.
-const fullMeals = async (ids: string[]) => (await Promise.all(ids.map(getMeal))).filter((m): m is Meal => Boolean(m))
+const fullMeals = async (ids: string[]) => (await Promise.all(ids.map(getRecipe))).filter((m): m is Meal => Boolean(m))
 
 // Recipes from the categories the user opens most (e.g. "Chicken", "Dessert"),
 // skipping ones they've already seen. Shuffled so the picks change between visits.
 async function recommend(uid: string, count = 6): Promise<Meal[]> {
   const recent = await getRecentRecipes(uid, 10)
   // The recent list only stores name and picture, so look up each recipe's category.
-  const meals = await Promise.all(recent.map((r) => getMeal(r.id)))
+  const meals = await Promise.all(recent.map((r) => getRecipe(r.id)))
   const tally = new Map<string, number>()
   for (const m of meals) if (m) tally.set(m.category, (tally.get(m.category) ?? 0) + 1)
   const top = [...tally].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c]) => c)

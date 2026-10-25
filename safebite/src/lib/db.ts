@@ -14,11 +14,11 @@ import {
   setDoc,
   serverTimestamp,
   updateDoc,
-  type Timestamp,
+  where,
 } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 import { db } from './firebase'
-import type { IngredientRule, MealLog, Profile, RecentRecipe, SavedRecipe, RecipeVariant, Swap, Triggers } from './schema'
+import type { IngredientRule, MealLog, Profile, RecentRecipe, SavedRecipe, RecipeVariant, Swap, Triggers, UserProduct, UserRecipe } from './schema'
 
 // Returns the database, or throws a clear error if Firebase isn't configured.
 function requireDb() {
@@ -108,19 +108,27 @@ export async function getSavedRecipes(uid: string) {
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as SavedRecipe) }))
 }
 
-// ---- Meal & symptom logs: profiles/{uid}/logs (no UI uses these yet) ----
+// ---- Meal & symptom logs: profiles/{uid}/logs (Log.tsx) ----
 
-export async function addMealLog(
-  uid: string,
-  log: { loggedAt: Timestamp; mealDescription: string; symptomScore: number; ingredients?: string[]; notes?: string },
-) {
-  // Firestore rejects undefined values, so drop optional fields that weren't provided.
-  const data = Object.fromEntries(Object.entries(log).filter(([, v]) => v !== undefined))
-  return addDoc(collection(requireDb(), 'profiles', uid, 'logs'), data)
+// Firestore rejects undefined values, so drop optional fields that weren't provided.
+const withoutUndefined = (data: object) => Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined))
+
+export async function addMealLog(uid: string, log: MealLog) {
+  return addDoc(collection(requireDb(), 'profiles', uid, 'logs'), withoutUndefined(log))
 }
 
+// Replaces the whole entry, so clearing an optional field (notes, recipe) removes it.
+export async function updateMealLog(uid: string, logId: string, log: MealLog) {
+  await setDoc(doc(requireDb(), 'profiles', uid, 'logs', logId), withoutUndefined(log))
+}
+
+export async function deleteMealLog(uid: string, logId: string) {
+  await deleteDoc(doc(requireDb(), 'profiles', uid, 'logs', logId))
+}
+
+// All logged meals, newest first.
 export async function getMealLogs(uid: string) {
-  const snap = await getDocs(collection(requireDb(), 'profiles', uid, 'logs'))
+  const snap = await getDocs(query(collection(requireDb(), 'profiles', uid, 'logs'), orderBy('loggedAt', 'desc')))
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as MealLog) }))
 }
 
@@ -138,6 +146,55 @@ export async function saveVariant(uid: string, baseRecipeId: string, baseRecipeN
 export async function getVariants(uid: string) {
   const snap = await getDocs(collection(requireDb(), 'profiles', uid, 'variants'))
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as RecipeVariant) }))
+}
+
+// ---- User-added products: products/{barcode} (Scan.tsx) ----
+
+export async function getUserProduct(barcode: string): Promise<UserProduct | null> {
+  const snap = await getDoc(doc(requireDb(), 'products', barcode))
+  return snap.exists() ? (snap.data() as UserProduct) : null
+}
+
+// Creates the product, or updates it if this user added it (firestore.rules blocks editing someone else's).
+export async function saveUserProduct(uid: string, barcode: string, product: { name: string; brand: string; ingredientsText: string }) {
+  await setDoc(doc(requireDb(), 'products', barcode), { ...product, addedBy: uid, updatedAt: serverTimestamp() })
+}
+
+// ---- User recipes: recipes/{recipeId} (RecipeForm.tsx; lib/recipes.ts turns them into Meals) ----
+
+// The fields the recipe form edits (not the owner or timestamps).
+export type UserRecipeInput = Pick<UserRecipe, 'name' | 'category' | 'area' | 'instructions' | 'ingredients' | 'tags' | 'shared'>
+
+const recipesCol = () => collection(requireDb(), 'recipes')
+
+// One user recipe; null if it doesn't exist. Throws permission-denied for someone else's private recipe.
+export async function getUserRecipe(recipeId: string) {
+  const snap = await getDoc(doc(recipesCol(), recipeId))
+  return snap.exists() ? { id: snap.id, ...(snap.data() as UserRecipe) } : null
+}
+
+// This user's own recipes plus everyone's shared ones, newest first.
+// shortcut: loads every shared recipe at once; page through them once there are hundreds.
+export async function getUserRecipes(uid: string) {
+  const [mine, shared] = await Promise.all([
+    getDocs(query(recipesCol(), where('ownerId', '==', uid))),
+    getDocs(query(recipesCol(), where('shared', '==', true))),
+  ])
+  const byId = new Map([...mine.docs, ...shared.docs].map((d) => [d.id, { id: d.id, ...(d.data() as UserRecipe) }]))
+  return [...byId.values()].sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
+}
+
+export async function addUserRecipe(uid: string, recipe: UserRecipeInput) {
+  return addDoc(recipesCol(), { ...recipe, ownerId: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+}
+
+// Only the owner can update or delete (firestore.rules).
+export async function updateUserRecipe(recipeId: string, recipe: UserRecipeInput) {
+  await updateDoc(doc(recipesCol(), recipeId), { ...recipe, updatedAt: serverTimestamp() })
+}
+
+export async function deleteUserRecipe(recipeId: string) {
+  await deleteDoc(doc(recipesCol(), recipeId))
 }
 
 // ---- Read-only data: ML trigger results and the shared ingredient rules (no UI yet) ----
