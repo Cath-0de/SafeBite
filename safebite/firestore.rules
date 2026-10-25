@@ -24,10 +24,11 @@ service cloud.firestore {
 
     // ---- profiles/{uid} ----
     function validProfileFields() {
-      return incoming().keys().hasOnly(['email', 'name', 'createdAt', 'allergens', 'currentState', 'energyLevel', 'updatedAt'])
+      return incoming().keys().hasOnly(['email', 'name', 'createdAt', 'allergens', 'hasUC', 'currentState', 'energyLevel', 'updatedAt'])
         && incoming().keys().hasAll(['email', 'name', 'createdAt', 'allergens', 'currentState', 'energyLevel', 'updatedAt'])
         && incoming().name is string && incoming().name.size() <= 100
         && incoming().allergens is list && incoming().allergens.size() <= 50
+        && (!('hasUC' in incoming()) || incoming().hasUC is bool)
         && incoming().currentState in ['flare', 'remission']
         && incoming().energyLevel in ['low', 'medium', 'high']
         && incoming().updatedAt == request.time;
@@ -45,6 +46,28 @@ service cloud.firestore {
         && validProfileFields()
         && incoming().email == resource.data.email
         && incoming().createdAt == resource.data.createdAt;
+
+      // ---- profiles/{uid}/recent/{mealId} ----
+      match /recent/{mealId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && incoming().keys().hasOnly(['name', 'thumbnail', 'viewedAt'])
+          && incoming().keys().hasAll(['name', 'thumbnail', 'viewedAt'])
+          && incoming().name is string && incoming().name.size() <= 300
+          && incoming().thumbnail is string && incoming().thumbnail.size() <= 500
+          && incoming().viewedAt == request.time;
+      }
+
+      // ---- profiles/{uid}/saved/{mealId} ----
+      match /saved/{mealId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && incoming().keys().hasOnly(['name', 'thumbnail', 'savedAt'])
+          && incoming().keys().hasAll(['name', 'thumbnail', 'savedAt'])
+          && incoming().name is string && incoming().name.size() <= 300
+          && incoming().thumbnail is string && incoming().thumbnail.size() <= 500
+          && incoming().savedAt == request.time;
+      }
 
       // ---- profiles/{uid}/logs/{logId} ----
       match /logs/{logId} {

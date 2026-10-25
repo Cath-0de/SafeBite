@@ -3,3 +3,5 @@ dist
 .env
 .env.local
 *.local
+PROJECT_BRIEF.md
+
