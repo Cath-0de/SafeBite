@@ -1,21 +1,17 @@
-// The frame around every page: the header (brand, nav links, sign-in button or
-// avatar) plus the area where the current page renders.
+// The frame around every page. Phones: a top bar (brand + sign in) and the tab
+// bar along the bottom. Desktop: the same pieces stacked in a left sidebar.
+// The current page renders in <main>.
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { firebaseConfigured } from '../lib/firebase'
 import AuthDialog from './AuthDialog'
+import Button from './Button'
+import TabBar from './TabBar'
 import ProfileSetup from '../pages/ProfileSetup'
 
-// The main nav links. Add an entry here to add a tab.
-const tabs = [
-  { to: '/', icon: '🏠', label: 'Home' },
-  { to: '/recipes', icon: '🍲', label: 'Recipes' },
-  { to: '/scan', icon: '📷', label: 'Scan' },
-]
-
 export default function Layout() {
-  const { user, profile, loading, needsSetup } = useAuth()
+  const { user, loading, needsSetup } = useAuth()
   // Whether the sign-in popup is showing.
   const [authOpen, setAuthOpen] = useState(false)
 
@@ -23,34 +19,16 @@ export default function Layout() {
   if (user && authOpen) setAuthOpen(false)
 
   return (
-    <>
-      <header className="site-header">
+    <div className="shell">
+      <header className="sidebar">
         <NavLink to="/" className="brand">SafeBite</NavLink>
-        {/* Pill links in the header; on phones the CSS pins this to the bottom as a tab bar. */}
-        <nav className="tabs">
-          {tabs.map((t) => (
-            <NavLink key={t.to} to={t.to} end={t.to === '/'}>
-              <span aria-hidden="true">{t.icon}</span> {t.label}
-            </NavLink>
-          ))}
-        </nav>
-        {/* Right side of the header: nothing while loading, the avatar when
-            signed in, otherwise the "Sign in" button. */}
+        <TabBar />
+        {/* Sign-in button while signed out; signed-in users reach their account through the Profile tab. */}
         <div className="auth">
           {!firebaseConfigured ? (
             <span className="muted">Firebase not configured</span>
-          ) : loading ? null : user ? (
-            // Avatar circle: links to the profile page. Shows the Google photo
-            // if there is one, otherwise the first letter of the name or email.
-            <NavLink to="/profile" className="avatar" aria-label="Your profile" title={user.email ?? 'Your profile'}>
-              {user.photoURL ? (
-                <img src={user.photoURL} alt="" referrerPolicy="no-referrer" />
-              ) : (
-                (profile?.name || user.displayName || user.email || '?').charAt(0).toUpperCase()
-              )}
-            </NavLink>
           ) : (
-            <button className="primary" onClick={() => setAuthOpen(true)}>Sign in</button>
+            !loading && !user && <Button variant="primary" onClick={() => setAuthOpen(true)}>Sign in</Button>
           )}
         </div>
       </header>
@@ -61,6 +39,6 @@ export default function Layout() {
       </main>
       {/* The sign-in popup, shown only while open and signed out. */}
       {authOpen && !user && <AuthDialog onClose={() => setAuthOpen(false)} />}
-    </>
+    </div>
   )
 }

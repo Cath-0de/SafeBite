@@ -79,7 +79,7 @@ export default function Home() {
   return (
     <>
       <section className="hero">
-        <h1>{profile?.name ? `${greeting()}, ${profile.name} 🌷` : 'Eat with confidence.'}</h1>
+        <h1>{profile?.name ? `${greeting()}, ${profile.name}` : 'Eat with confidence.'}</h1>
         <p>
           {!user
             ? 'Sign in to find recipes that suit you, and pick up where you left off.'

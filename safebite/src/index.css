@@ -1,212 +1,266 @@
 /* All of the app's styling lives in this one file. */
 
-/* Colour palette. Everything below uses these variables. Built from the brand
-   colours cream #FDF0D1, dusty rose #AC7D88, mauve #85586F and plum #643843.
-   Light mode is the default; the <html data-theme> attribute, set in
-   index.html and by the toggle on the profile page (lib/theme.ts), picks dark. */
+/* ---- Design tokens ----
+   Every colour in the app comes from these variables; never hardcode one below.
+   Light mode is the default; <html data-theme="dark">, set in index.html and by
+   the toggle on the profile page (lib/theme.ts), switches to the dark set.
+   Status colours (safe / check / contains) are only ever used together with an
+   icon and a word (SafetyBadge.tsx), never as the only signal. */
 :root {
-  --text: #3d2229;       /* darkened plum, for body text */
-  --muted: #85586f;      /* mauve */
-  --bg: #fdf0d1;         /* cream */
-  --surface: #fff9ec;    /* lighter cream, for cards and the header */
-  --border: #e8d3c7;
-  --highlight: #ac7d88;  /* dusty rose: hover and selected outlines */
-  --accent: #643843;     /* plum: buttons, links, active nav */
-  --on-accent: #fdf0d1;
-  --error: #b3261e;
+  --primary: #1f3b33;    /* deep green: buttons, active nav, headings */
+  --on-primary: #f7f4ec; /* text on --primary */
+  --bg: #f7f4ec;         /* warm cream page */
+  --surface: #fffdf8;    /* cards, bars, inputs */
+  --panel: #eaf0ea;      /* sage: soft panels and hover */
+  --accent: #a0520f;     /* terracotta: links, focus ring, highlights */
+  --text: #1f2a26;
+  --muted: #4a5a53;
+  --border: #ddd8cb;
+  --safe: #2f7d4f;
+  --check: #b7791f;
+  --contains: #b83b3b;
 
-  font: 16px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Nunito Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Domine', Georgia, serif;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --tap: 44px; /* minimum size of anything clickable */
+
+  font: 16px/1.55 var(--font-body);
   color-scheme: light;
   color: var(--text);
   background: var(--bg);
 }
 
-/* Dark mode: deep plum backgrounds with cream text and light rose accents. */
+/* Dark mode: the same greens and terracotta, lightened to keep AA contrast on a dark green page. */
 :root[data-theme='dark'] {
-  --text: #fdf0d1;
-  --muted: #c9a3ad;
-  --bg: #24151a;
-  --surface: #331e25;
-  --border: #4a2e36;
-  --highlight: #ac7d88;
-  --accent: #d9aeb8;
-  --on-accent: #2a1519;
-  --error: #f2b8b5;
+  --primary: #a8cdb8;
+  --on-primary: #13201c;
+  --bg: #13201c;
+  --surface: #1a2a25;
+  --panel: #22362f;
+  --accent: #e0955a;
+  --text: #eef2ec;
+  --muted: #a9bab1;
+  --border: #2e433b;
+  --safe: #6fcf97;
+  --check: #e2b24c;
+  --contains: #f08a8a;
   color-scheme: dark;
 }
 
-/* Base page and text styles. */
+/* ---- Base ---- */
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); }
+h1, h2, h3 { font-family: var(--font-heading); color: var(--primary); line-height: 1.2; }
 h1 { font-size: 2rem; margin: 0 0 0.5rem; }
-h2 { font-size: 1.1rem; margin: 0.5rem 0 0.25rem; }
+h2 { font-size: 1.15rem; margin: 0.5rem 0 0.25rem; }
 a { color: var(--accent); }
-main { max-width: 960px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+/* A clear focus ring for keyboard users on everything focusable. */
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
-/* Header bar: brand, nav links, and the sign-in button or avatar circle (Layout.tsx). */
-.site-header {
-  display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
-  padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface);
-}
-.site-header a { text-decoration: none; color: var(--muted); }
-
-/* Main nav (Layout.tsx): rounded pills in the header, the current page filled in. */
-.tabs { display: flex; gap: 0.5rem; flex: 1; }
-.tabs a { padding: 0.4rem 0.9rem; border-radius: 999px; transition: background 0.15s; }
-.tabs a:hover { background: var(--border); }
-.tabs a.active { background: var(--accent); color: var(--on-accent); font-weight: 600; }
-/* On phones the nav becomes a tab bar fixed to the bottom of the screen. */
-@media (max-width: 600px) {
-  .tabs {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; justify-content: space-around;
-    padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
-    background: var(--surface); border-top: 1px solid var(--border);
-  }
-  .tabs a { display: flex; flex-direction: column; align-items: center; font-size: 0.8rem; }
-  .tabs a span { font-size: 1.3rem; }
-  .site-header { justify-content: space-between; }
-  main { padding-bottom: 6rem; }
-}
-.site-header .brand { font-weight: 700; font-size: 1.15rem; color: var(--accent); }
-.auth { display: flex; align-items: center; gap: 0.75rem; }
-.site-header .avatar, .site-header .avatar.active {
-  display: grid; place-items: center; width: 2.25rem; height: 2.25rem; overflow: hidden;
-  border-radius: 50%; background: var(--accent); color: var(--on-accent); font-weight: 600;
-}
-.site-header .avatar.active { outline: 2px solid var(--accent); outline-offset: 2px; }
-.avatar img { width: 100%; height: 100%; object-fit: cover; }
-
-/* Buttons, and links styled as buttons. "primary" is the filled green style. */
-button, .button {
-  font: inherit; cursor: pointer; text-decoration: none; display: inline-block;
-  padding: 0.5rem 1rem; border-radius: 8px;
+/* Text inputs everywhere share one look. */
+input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, select {
+  font: inherit; min-height: var(--tap); padding: 0.5rem 0.85rem; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--surface); color: var(--text);
 }
-button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* ---- Layout shell (Layout.tsx, TabBar.tsx) ----
+   Phones: a top bar (brand + sign in) and a tab bar fixed to the bottom.
+   Desktop (1024px and up): a left sidebar holding the brand, tabs and sign in. */
+.sidebar {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.75rem 1rem; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.brand { font-family: var(--font-heading); font-weight: 700; font-size: 1.3rem; color: var(--primary); text-decoration: none; }
+.auth { display: flex; align-items: center; gap: 0.75rem; }
+main { max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem calc(6rem + env(safe-area-inset-bottom)); }
+
+.tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+  display: flex; justify-content: space-around;
+  padding: 0.35rem 0.25rem calc(0.35rem + env(safe-area-inset-bottom));
+  background: var(--surface); border-top: 1px solid var(--border);
+}
+.tabbar a {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem;
+  min-width: var(--tap); min-height: var(--tap); padding: 0.25rem 0.5rem; border-radius: var(--radius-sm);
+  color: var(--muted); text-decoration: none; font-size: 0.75rem; font-weight: 600;
+}
+.tabbar a:hover { background: var(--panel); }
+.tabbar a.active { color: var(--primary); background: var(--panel); }
+
+@media (min-width: 1024px) {
+  .shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+  .sidebar {
+    position: sticky; top: 0; height: 100vh; flex-direction: column; align-items: stretch;
+    justify-content: flex-start; padding: 1.5rem 1rem; border-bottom: none; border-right: 1px solid var(--border);
+  }
+  .brand { padding: 0 0.75rem 1rem; }
+  .tabbar {
+    position: static; flex-direction: column; justify-content: flex-start; gap: 0.25rem;
+    padding: 0; border-top: none; background: none; flex: 1;
+  }
+  .tabbar a { flex-direction: row; justify-content: flex-start; gap: 0.75rem; padding: 0.6rem 0.75rem; font-size: 1rem; }
+  .auth { padding: 0 0.75rem; }
+  main { padding: 2.5rem 2rem 4rem; margin: 0; }
+}
+
+/* ---- Shared components ---- */
+
+/* Button.tsx, and plain <button>s / links with class "button" on older pages. */
+button, .button, .btn {
+  font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: var(--tap); padding: 0.5rem 1.1rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+button:hover, .button:hover { background: var(--panel); }
+.primary, .btn-primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.primary:hover, .btn-primary:hover { background: var(--primary); opacity: 0.92; }
+.btn-ghost { background: none; border-color: transparent; color: var(--primary); }
+.btn-lg { min-height: 56px; padding: 0.75rem 1.5rem; font-size: 1.1rem; }
 button:disabled { opacity: 0.5; cursor: default; }
+
+/* Card.tsx, and recipe/product cards. */
+.card {
+  display: block; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: inherit; text-decoration: none;
+}
+a.card:hover { border-color: var(--accent); }
+.card img { width: 100%; border-radius: var(--radius-sm); aspect-ratio: 4 / 3; object-fit: cover; }
+.card p { margin: 0.25rem 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+.panel { background: var(--panel); border-radius: var(--radius); padding: 1rem 1.25rem; }
+
+/* Chip.tsx: a rounded label, optionally with a remove button. */
+.chip {
+  display: inline-flex; align-items: center; gap: 0.25rem; min-height: var(--tap);
+  padding: 0 0.35rem 0 0.9rem; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); font-weight: 600;
+}
+.chip:not(:has(.chip-remove)) { padding-right: 0.9rem; }
+.chip-check { border-color: var(--check); background: color-mix(in srgb, var(--check) 12%, var(--surface)); }
+.chip-remove {
+  min-height: 36px; min-width: 36px; padding: 0; border: none; border-radius: 50%;
+  background: none; color: var(--muted); font-size: 1.2rem; line-height: 1;
+}
+
+/* SafetyBadge.tsx: icon + word + tinted background. Text stays --text for contrast;
+   the status colour goes on the icon, border and tint. */
+.badge {
+  display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem;
+  border-radius: 999px; border: 1px solid; font-weight: 700; font-size: 0.9rem; color: var(--text);
+}
+.badge svg { flex-shrink: 0; }
+.badge-safe { border-color: var(--safe); background: color-mix(in srgb, var(--safe) 12%, var(--surface)); }
+.badge-safe svg { color: var(--safe); }
+.badge-check { border-color: var(--check); background: color-mix(in srgb, var(--check) 14%, var(--surface)); }
+.badge-check svg { color: var(--check); }
+.badge-contains { border-color: var(--contains); background: color-mix(in srgb, var(--contains) 12%, var(--surface)); }
+.badge-contains svg { color: var(--contains); }
+.badge-lg { padding: 0.75rem 1.25rem; font-size: 1.2rem; border-radius: var(--radius); border-width: 2px; }
+
+/* IngredientList.tsx: flagged ingredients are highlighted and labelled with their allergy. */
+.ingredient-list { list-style: none; padding: 0; margin: 0; }
+.ingredient-list li {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem;
+  padding: 0.65rem 0; border-bottom: 1px solid var(--border);
+}
+.ingredient-list .measure { margin-left: auto; color: var(--muted); }
+.ingredient-list li.flagged { background: color-mix(in srgb, var(--contains) 8%, transparent); padding-inline: 0.5rem; border-radius: var(--radius-sm); }
+.ingredient-list li.flagged .name { font-weight: 700; }
+.flag { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; font-weight: 700; }
+.flag svg { color: var(--contains); }
+
+/* ---- Pages ---- */
 
 /* Star button next to a recipe's title (SaveButton.tsx). */
 .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.star { font-size: 1.6rem; line-height: 1; padding: 0.35rem 0.55rem; border-radius: 50%; color: var(--accent); flex-shrink: 0; }
-.star[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.star { font-size: 1.6rem; line-height: 1; min-width: var(--tap); padding: 0; border-radius: 50%; color: var(--primary); flex-shrink: 0; }
+.star[aria-pressed='true'] { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
 
 /* Home page intro (Home.tsx). */
-.hero { padding: 3rem 0 2rem; max-width: 640px; }
-.hero h1 { font-size: 2.75rem; line-height: 1.1; }
+.hero { padding: 1.5rem 0 1rem; max-width: 640px; }
+.hero h1 { font-size: 2.4rem; }
 .hero p { color: var(--muted); font-size: 1.15rem; }
-/* "Continue where you left off" row on the home page: scrolls sideways when it overflows. */
+/* Rows of recipe cards on the home page: scroll sideways when they overflow. */
 .section-title { font-size: 1.35rem; }
 .recent { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, 220px); gap: 1rem; overflow-x: auto; padding: 0.5rem 0 1rem; }
-.recent .card { transition: transform 0.15s; }
-.recent .card:hover { transform: translateY(-3px); }
 .actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap; }
-
-/* Card grid: home feature cards, recipe cards, and the product card. */
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
-.card {
-  display: block; padding: 1rem; border: 1px solid var(--border); border-radius: 12px;
-  background: var(--surface); color: inherit; text-decoration: none;
-}
-a.card:hover { border-color: var(--highlight); }
-.card img { width: 100%; border-radius: 8px; aspect-ratio: 4 / 3; object-fit: cover; }
-.card p { margin: 0.25rem 0; }
 
 /* Camera view on the Scan page (CameraScanner.tsx). */
 .scanner { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; max-width: 480px; }
-.scanner video { width: 100%; border-radius: 12px; background: #000; aspect-ratio: 4 / 3; object-fit: cover; }
+.scanner video { width: 100%; border-radius: var(--radius); background: var(--text); aspect-ratio: 4 / 3; object-fit: cover; }
 .scanner p { margin: 0; }
 
 /* Search bar on the Recipes and Scan pages. */
 .search { display: flex; gap: 0.5rem; margin: 1rem 0; max-width: 480px; }
-.search input {
-  flex: 1; font: inherit; padding: 0.5rem 0.75rem; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface); color: var(--text);
-}
+.search input { flex: 1; }
 
 /* Vertical form layout used inside the sign-in popup. */
 .stack { display: flex; flex-direction: column; gap: 0.75rem; }
 .stack label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
-.stack input {
-  font: inherit; padding: 0.5rem 0.75rem; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface); color: var(--text);
-}
 .stack .error { margin: 0; }
 
 /* The sign-in popup (AuthDialog.tsx). */
 .auth-dialog {
-  width: min(400px, calc(100vw - 2rem)); padding: 0; border-radius: 12px;
+  width: min(400px, calc(100vw - 2rem)); padding: 0; border-radius: var(--radius);
   border: 1px solid var(--border); background: var(--surface); color: var(--text);
 }
 .auth-dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 .auth-dialog-body { position: relative; padding: 1.5rem; }
 .auth-dialog h2 { font-size: 1.4rem; margin: 0 0 1rem; }
-.auth-dialog .close {
-  position: absolute; top: 0.75rem; right: 0.75rem;
-  border: none; background: none; font-size: 1.5rem; line-height: 1; padding: 0.25rem 0.5rem;
-}
+.auth-dialog .close { position: absolute; top: 0.5rem; right: 0.5rem; border: none; background: none; font-size: 1.5rem; padding: 0 0.75rem; }
 .divider { display: flex; align-items: center; gap: 0.75rem; margin: 1rem 0; color: var(--muted); font-size: 0.9rem; }
 .divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
 
 /* Profile questions (ProfileForm.tsx): question blocks and the selectable answer chips. */
 .setup { max-width: 640px; }
 .setup fieldset { border: none; padding: 0; margin: 1.75rem 0; }
-.setup legend { font-weight: 600; font-size: 1.1rem; padding: 0; }
+.setup legend { font-weight: 700; font-size: 1.1rem; padding: 0; }
 .setup fieldset p { margin: 0.25rem 0 0; }
-.setup fieldset > input {
-  display: block; width: 100%; max-width: 320px; margin-top: 0.75rem;
-  font: inherit; padding: 0.5rem 0.75rem; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface); color: var(--text);
-}
+.setup fieldset > input { display: block; width: 100%; max-width: 320px; margin-top: 0.75rem; }
 .choices { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
 .choice {
-  display: flex; align-items: center; gap: 0.5rem; cursor: pointer;
-  padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  display: flex; align-items: center; gap: 0.5rem; cursor: pointer; min-height: var(--tap);
+  padding: 0.5rem 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
 }
-.choice:has(input:checked) { border-color: var(--accent); }
-.choice input { accent-color: var(--accent); margin: 0; }
-.choice .remove { border: none; background: none; padding: 0 0.25rem; font-size: 1.1rem; line-height: 1; color: var(--muted); }
+.choice:has(input:checked) { border-color: var(--primary); background: var(--panel); }
+.choice input { accent-color: var(--primary); margin: 0; }
+.choice .remove { border: none; background: none; min-height: 0; padding: 0 0.25rem; font-size: 1.1rem; line-height: 1; color: var(--muted); }
 /* "Something else?" box under the allergy checkboxes. */
 .other-allergy { display: flex; gap: 0.5rem; margin-top: 0.75rem; max-width: 360px; }
-.other-allergy input {
-  flex: 1; font: inherit; padding: 0.5rem 0.75rem; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface); color: var(--text);
-}
-/* Allergy warnings: chips naming the allergens and highlighted ingredients on
-   recipe cards (RecipeCard.tsx), and the box on a recipe's page (RecipeDetail.tsx). */
+.other-allergy input { flex: 1; }
+.setup .actions { align-items: center; }
+/* Allergy warnings on recipe cards (RecipeCard.tsx) and a recipe's page (RecipeDetail.tsx). */
 .allergy-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .allergy-chip {
-  font-size: 0.8rem; font-weight: 600; padding: 0.1rem 0.55rem; border-radius: 999px;
-  background: var(--error); color: var(--surface);
+  font-size: 0.8rem; font-weight: 700; padding: 0.1rem 0.55rem; border-radius: 999px;
+  border: 1px solid var(--contains); background: color-mix(in srgb, var(--contains) 12%, var(--surface));
 }
-.ingredients mark { background: none; color: var(--error); font-weight: 600; text-decoration: underline wavy; }
-.warning-box { margin-top: 1rem; padding: 0.75rem 1rem; border: 1px solid var(--error); border-radius: 8px; color: var(--error); }
-.ingredient-list li.flagged span:first-child { color: var(--error); font-weight: 600; }
-.setup .actions { align-items: center; }
-/* Account section at the bottom of the profile page. */
+.ingredients mark { background: none; color: var(--contains); font-weight: 700; text-decoration: underline wavy; }
+.warning-box { margin-top: 1rem; padding: 0.75rem 1rem; border: 1px solid var(--contains); border-radius: var(--radius-sm); color: var(--contains); }
+/* Sections at the bottom of the profile page. */
 .account { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); max-width: 640px; }
 .account h2 { margin: 0 0 0.75rem; }
 
 /* Small text helpers used across pages. */
 .muted { color: var(--muted); }
-.error { color: var(--error); }
+.error { color: var(--contains); }
 .ingredients { font-size: 0.9rem; color: var(--muted); }
 
 /* A single recipe's page (RecipeDetail.tsx). */
 .recipe { max-width: 760px; }
 .recipe .back { margin-bottom: 1.25rem; }
 .recipe-header { display: grid; grid-template-columns: minmax(0, 280px) 1fr; gap: 1.5rem; align-items: start; }
-.recipe-header img { width: 100%; border-radius: 12px; aspect-ratio: 1; object-fit: cover; }
+.recipe-header img { width: 100%; border-radius: var(--radius); aspect-ratio: 1; object-fit: cover; }
 .recipe-header .actions { margin-top: 1rem; }
 @media (max-width: 600px) { .recipe-header { grid-template-columns: 1fr; } }
 .recipe section { margin-top: 2rem; }
 .recipe section h2 { font-size: 1.35rem; }
 .tags { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; padding: 0; margin: 0.5rem 0 0; }
 .tags li { font-size: 0.85rem; padding: 0.15rem 0.6rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); }
-.ingredient-list { list-style: none; padding: 0; margin: 0; }
-.ingredient-list li {
-  display: flex; justify-content: space-between; gap: 1rem;
-  padding: 0.5rem 0; border-bottom: 1px solid var(--border);
-}
 
 /* Search help text and the "Recipes with X + Y" summary (Recipes.tsx). */
 .hint { font-size: 0.9rem; margin: -0.5rem 0 0; }
@@ -217,3 +271,10 @@ a.card:hover { border-color: var(--highlight); }
 .swatches { display: flex; }
 .swatches span { width: 1rem; height: 1rem; border-radius: 50%; border: 1px solid var(--border); margin-left: -0.25rem; }
 .swatches span:first-child { margin-left: 0; }
+
+/* Component preview page (DesignPreview.tsx, route /design). */
+.swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; }
+.swatch-grid div { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); font-size: 0.85rem; }
+.swatch-grid span { display: block; height: 48px; }
+.swatch-grid p { margin: 0; padding: 0.4rem 0.6rem; }
+.row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin: 0.75rem 0 1.5rem; }

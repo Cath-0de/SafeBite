@@ -1,4 +1,4 @@
-// The profile page (route "/profile", reached from the avatar circle): shows
+// The profile page (route "/profile", the Profile tab): shows
 // the account email, the editable profile questions, the light/dark mode
 // choice, and the sign-out button.
 import { useNavigate } from 'react-router-dom'

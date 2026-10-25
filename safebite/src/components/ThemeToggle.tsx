@@ -4,8 +4,10 @@ import { useState } from 'react'
 import { currentTheme, setTheme, type Theme } from '../lib/theme'
 
 const OPTIONS: { id: Theme; label: string; swatches: string[] }[] = [
-  { id: 'light', label: 'Light', swatches: ['#fdf0d1', '#ac7d88', '#85586f', '#643843'] },
-  { id: 'dark', label: 'Dark', swatches: ['#24151a', '#643843', '#ac7d88', '#fdf0d1'] },
+  // Previews of the *other* theme can't come from CSS variables, so these copy
+  // the values in index.css (:root and [data-theme='dark']); keep them in sync.
+  { id: 'light', label: 'Light', swatches: ['#f7f4ec', '#eaf0ea', '#a0520f', '#1f3b33'] },
+  { id: 'dark', label: 'Dark', swatches: ['#13201c', '#22362f', '#e0955a', '#a8cdb8'] },
 ]
 
 export default function ThemeToggle() {
