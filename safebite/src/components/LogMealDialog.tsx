@@ -2,10 +2,12 @@
 // type, what you ate, how you felt afterwards, ingredients and notes.
 // "What did you eat?" suggests the user's recently viewed and saved recipes;
 // picking one links the entry to that recipe and fills in its ingredients.
+// For anything else, "Suggest with AI" guesses the ingredients (lib/ai.ts).
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Timestamp } from 'firebase/firestore'
 import { useAuth } from '../context/AuthContext'
 import { addMealLog, getRecentRecipes, getSavedRecipes, updateMealLog } from '../lib/db'
+import { aiConfigured, suggestIngredients } from '../lib/ai'
 import { MEAL_TYPES, parseIngredients, RATINGS } from '../lib/meals'
 import { getRecipe } from '../lib/recipes'
 import type { MealLog, MealType } from '../lib/schema'
@@ -38,6 +40,8 @@ export default function LogMealDialog({ entry, onClose, onSaved }: {
   const [ingredients, setIngredients] = useState(entry?.ingredients?.join(', ') ?? '')
   // The last recipe picked, so a slow ingredient fetch for an earlier pick is ignored.
   const lastPicked = useRef('')
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestNote, setSuggestNote] = useState('')
   const [notes, setNotes] = useState(entry?.notes ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -102,6 +106,23 @@ export default function LogMealDialog({ entry, onClose, onSaved }: {
     } else if (e.key === 'Escape' && showList) {
       e.preventDefault()
       setListOpen(false)
+    }
+  }
+
+  // Fills the ingredients box with the AI's guess for the typed meal; the user checks and edits it.
+  async function onSuggest() {
+    setSuggesting(true)
+    setSuggestNote('')
+    try {
+      const list = await suggestIngredients(meal.trim())
+      if (list.length) {
+        setIngredients(list.join(', '))
+        setSuggestNote("AI guess: remove anything that wasn't in your meal and add what's missing.")
+      } else setSuggestNote("The AI couldn't guess the ingredients. Type them instead.")
+    } catch (err) {
+      setSuggestNote(err instanceof Error ? err.message : "Couldn't get suggestions right now.")
+    } finally {
+      setSuggesting(false)
     }
   }
 
@@ -223,11 +244,17 @@ export default function LogMealDialog({ entry, onClose, onSaved }: {
             </div>
           </fieldset>
 
-          <label className="field">
-            <span className="field-label">Ingredients <span className="muted">(optional)</span></span>
+          <div className="field">
+            <label className="field-label" htmlFor="meal-ingredients">Ingredients <span className="muted">(optional)</span></label>
             <span className="muted field-hint">Filled in when you pick a recipe. Separate with commas; edit if you changed anything.</span>
-            <textarea value={ingredients} onChange={(e) => setIngredients(e.target.value)} placeholder="e.g. chicken, rice, garlic" maxLength={5000} />
-          </label>
+            <textarea id="meal-ingredients" value={ingredients} onChange={(e) => setIngredients(e.target.value)} placeholder="e.g. chicken, rice, garlic" maxLength={5000} />
+            {aiConfigured && (
+              <div className="row">
+                <Button onClick={onSuggest} disabled={suggesting || !meal.trim()}>{suggesting ? 'Thinking…' : 'Suggest with AI'}</Button>
+                {suggestNote && <span className="muted" role="status">{suggestNote}</span>}
+              </div>
+            )}
+          </div>
 
           <label className="field">
             <span className="field-label">Notes <span className="muted">(optional)</span></span>

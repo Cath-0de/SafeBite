@@ -27,7 +27,7 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
   const [allergens, setAllergens] = useState<string[]>(profile.allergens)
   // What's typed in the "something else" box, before it's added.
   const [otherAllergy, setOtherAllergy] = useState('')
-  // While Gemini reads the typed text, and what it found (or why it failed).
+  // While the AI (lib/ai.ts) reads the typed text, and what it found (or why it failed).
   const [parsing, setParsing] = useState(false)
   const [parseNote, setParseNote] = useState('')
   // Profiles made before this question existed were all UC users.
@@ -55,7 +55,7 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
 
   // Add the typed allergy. One or two words ("kiwi", "dairy") are added as typed,
   // ticking the matching checkbox if there is one. Anything longer ("milk makes
-  // me bloated and I can't eat prawns") goes to Gemini to pick out the foods.
+  // me bloated and I can't eat prawns") goes to the AI to pick out the foods.
   // Either way nothing is saved until the user checks the answers and presses Save.
   async function addOtherAllergy() {
     const text = otherAllergy.trim().toLowerCase()

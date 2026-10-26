@@ -1,16 +1,17 @@
 // The barcode page (route "/scan"): the user types a barcode number and sees
-// the product from Open Food Facts, with the user's allergens flagged. The
-// camera button reads the barcode instead of typing it (CameraScanner.tsx).
-// If Open Food Facts doesn't know the barcode or has no ingredients for it,
-// the user can ask Gemini to search the web (lib/ai.ts); that result is
-// labelled as possibly wrong and never shown as "safe". Signed-in users can
-// also add a missing product or its ingredients themselves (products/{barcode}),
-// which later lookups use when Open Food Facts has no ingredients.
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+// the product with the user's allergens flagged. The camera button reads the
+// barcode instead of typing it (CameraScanner.tsx).
+// Where the ingredients come from, best first: Open Food Facts, then USDA
+// FoodData Central (api/usda.ts), then a product a user added
+// (products/{barcode}), then Open Food Facts' entry without ingredients.
+// If none has ingredients, the user can add them, or ask the AI to search the
+// web (lib/ai.ts); that result is labelled as possibly wrong and never "safe".
+import { lazy, Suspense, useCallback, useRef, useState, type FormEvent } from 'react'
 import { lookupBarcode, type Product } from '../api/openFoodFacts'
+import { lookupUsda } from '../api/usda'
 import { useAuth } from '../context/AuthContext'
-import { findProductOnline, type WebProduct } from '../lib/ai'
-import { getUserProduct, saveUserProduct } from '../lib/db'
+import { aiConfigured, findProductOnline, type WebProduct } from '../lib/ai'
+import { getUserProduct, hasOpenReport, reportProduct, saveUserProduct } from '../lib/db'
 import { firebaseConfigured } from '../lib/firebase'
 import { allergenRegex, allergensIn } from '../lib/allergens'
 import Button from '../components/Button'
@@ -22,16 +23,6 @@ import SafetyBadge, { type SafetyStatus } from '../components/SafetyBadge'
 // Loaded only when the camera is opened, so the barcode reader doesn't slow down other pages.
 const CameraScanner = lazy(() => import('../components/CameraScanner'))
 
-// Google requires its "search suggestions" chip to be shown with search-grounded answers, as given, in a shadow root.
-function SearchSuggestions({ html }: { html: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (el) (el.shadowRoot ?? el.attachShadow({ mode: 'open' })).innerHTML = html
-  }, [html])
-  return <div ref={ref} className="search-suggestions" />
-}
-
 export default function Scan() {
   const [barcode, setBarcode] = useState('')
   // The result of the last lookup: a product, "not found", or an error.
@@ -42,14 +33,24 @@ export default function Scan() {
   // The barcode the current result is for (the box may have been edited since).
   const [code, setCode] = useState('')
   // Set when the shown product came from the AI web search rather than Open Food Facts.
-  const [web, setWeb] = useState<Pick<WebProduct, 'sources' | 'searchSuggestions'> | null>(null)
+  const [web, setWeb] = useState<Pick<WebProduct, 'sources'> | null>(null)
   const [webBusy, setWebBusy] = useState(false)
   const [webMissed, setWebMissed] = useState(false)
+  // Where the shown product's details came from, for the "Source:" line.
+  const [source, setSource] = useState('')
   // Who added the shown product, when it came from products/{barcode}.
   const [addedBy, setAddedBy] = useState<string | null>(null)
-  // The "add this product" form, prefilled from whatever was found.
-  const [form, setForm] = useState<{ name: string; brand: string; ingredientsText: string } | null>(null)
+  // The product form, prefilled from whatever was found: adding a missing product,
+  // editing one this user typed in, or reporting a saved one as wrong.
+  const [form, setForm] = useState<{ mode: 'add' | 'edit' | 'report'; name: string; brand: string; ingredientsText: string; reason: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  // The shown product is an AI result saved by an earlier search: shown as plain
+  // food data with a "Not verified" tag (no AI notes or links).
+  const [storedAi, setStoredAi] = useState(false)
+  // Whether the shown saved product has a report waiting for review.
+  const [reported, setReported] = useState(false)
+  // The barcode of the newest lookup, so a slow report check for an older one is ignored.
+  const latestCode = useRef('')
   // Whether the camera view is open.
   const [scanning, setScanning] = useState(false)
   const { user, profile } = useAuth()
@@ -59,18 +60,25 @@ export default function Scan() {
   const parts = product ? product.ingredientsText.split(/([,;()[\]])/) : []
   const found = product ? allergensIn(myAllergens, [...parts, ...product.allergens]) : []
   const addedByOther = Boolean(addedBy && addedBy !== user?.uid)
+  // Shown from products/{barcode}, or a fresh AI result: these can be reported.
   // Nothing listed, only what the AI found online, or someone else's typing means we can't be sure: ask the user to check the packet.
   const status: SafetyStatus = found.length
     ? 'contains'
-    : web || addedByOther || (product && !product.ingredientsText && !product.allergens.length) ? 'check' : 'safe'
-  const checkReason = web ? 'found online, could be wrong' : addedByOther ? 'added by another user' : 'no ingredients listed'
+    : reported || web || storedAi || addedByOther || (product && !product.ingredientsText && !product.allergens.length) ? 'check' : 'safe'
+  const checkReason = reported ? 'reported as wrong'
+    : web ? 'found online, could be wrong'
+    : storedAi ? 'not verified'
+    : addedByOther ? 'added by another user' : 'no ingredients listed'
   const missing = notFound || Boolean(product && !product.ingredientsText)
-  const canSearchWeb = firebaseConfigured && !web && !webMissed && missing
-  // Offer the form for a missing product or ingredients, to save a checked AI result, or to fix one this user added.
-  const addLabel = notFound ? 'Add this product'
-    : product && !product.ingredientsText ? 'Add the ingredients list'
-    : web ? 'Save it after checking the packet'
-    : addedBy && addedBy === user?.uid ? 'Edit this product' : ''
+  const canSearchWeb = aiConfigured && !web && !webMissed && missing
+  // Which form the button opens: add what's missing, edit your own entry, or report a saved one.
+  const formMode = notFound || (product && !product.ingredientsText) ? 'add'
+    : addedBy && !addedByOther ? 'edit'
+    : web || storedAi || addedByOther ? 'report' : null
+  const formButton = notFound ? 'Add this product'
+    : formMode === 'add' ? 'Add the ingredients list'
+    : formMode === 'edit' ? 'Edit this product'
+    : 'Report this if wrong'
 
   // Clear the previous result, then fetch the product for this barcode.
   const lookup = useCallback(async (code: string) => {
@@ -83,23 +91,59 @@ export default function Scan() {
     setWebMissed(false)
     setAddedBy(null)
     setForm(null)
+    setSource('')
+    setReported(false)
+    setStoredAi(false)
+    latestCode.current = code
+    const digits = /^\d{6,14}$/.test(code)
     try {
-      // Users' own additions need sign-in to read; without it, just use Open Food Facts.
-      const [off, added] = await Promise.all([
-        lookupBarcode(code),
-        user && /^\d{6,14}$/.test(code)
+      // If any one source fails (e.g. Open Food Facts is down), carry on with the
+      // rest, so the user still gets a result or the "Add this product" button.
+      // Users' additions need sign-in to read.
+      let offFailed = false
+      const [off, usda, added] = await Promise.all([
+        lookupBarcode(code).catch((err) => {
+          console.error('Could not check Open Food Facts', err)
+          offFailed = true
+          return null
+        }),
+        digits
+          ? lookupUsda(code).catch((err) => {
+              console.error('Could not check USDA', err)
+              return null
+            })
+          : null,
+        user && digits
           ? getUserProduct(code).catch((err) => {
               console.error('Could not check user-added products', err)
               return null
             })
           : null,
       ])
-      // Open Food Facts wins when it has ingredients; a user's addition fills the gap otherwise.
-      if (added && !off?.ingredientsText) {
-        setProduct({ barcode: code, name: added.name, brand: added.brand, ingredientsText: added.ingredientsText, allergens: off?.allergens ?? [] })
-        setAddedBy(added.addedBy)
-      } else if (off) setProduct(off)
-      else setNotFound(true)
+      const allergens = off?.allergens ?? []
+      if (off?.ingredientsText) {
+        setProduct(off)
+        setSource('Open Food Facts')
+      } else if (usda) {
+        setProduct({ barcode: code, ...usda, allergens })
+        setSource('USDA FoodData Central')
+      } else if (added) {
+        setProduct({ barcode: code, name: added.name, brand: added.brand, ingredientsText: added.ingredientsText, allergens })
+        // A stored AI result shows like a fresh one; a person's version shows who added it.
+        if (added.source === 'ai') setStoredAi(true)
+        else setAddedBy(added.addedBy)
+        hasOpenReport(code)
+          .then((open) => {
+            if (latestCode.current === code) setReported(open)
+          })
+          .catch((err) => console.error('Could not check reports', err))
+      } else if (off) {
+        setProduct(off)
+        setSource('Open Food Facts')
+      } else {
+        setNotFound(true)
+        if (offFailed) setError("Open Food Facts couldn't be reached, so it may have this product. Try again later, or add it below.")
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
@@ -118,9 +162,17 @@ export default function Scan() {
     setSaving(true)
     setError('')
     try {
-      await saveUserProduct(user.uid, code, entry)
+      if (form.mode === 'report') {
+        // The product stays as it is until someone reviews the report.
+        await reportProduct(user.uid, code, form.reason.trim(), entry)
+        setReported(true)
+        setForm(null)
+        return
+      }
+      await saveUserProduct(user.uid, code, { ...entry, source: 'user' })
       setProduct({ barcode: code, ...entry, allergens: product?.allergens ?? [] })
       setAddedBy(user.uid)
+      setSource('')
       setNotFound(false)
       setWeb(null)
       setForm(null)
@@ -131,7 +183,7 @@ export default function Scan() {
     }
   }
 
-  // Ask Gemini (with Google Search) for this product's ingredients.
+  // Ask the AI (which searches the web) for this product's ingredients.
   async function searchWeb() {
     setWebBusy(true)
     setError('')
@@ -143,7 +195,13 @@ export default function Scan() {
       }
       setProduct({ barcode: code, name: result.name, brand: result.brand, ingredientsText: result.ingredientsText, allergens: product?.allergens ?? [] })
       setNotFound(false)
-      setWeb({ sources: result.sources, searchSuggestions: result.searchSuggestions })
+      setSource('')
+      setWeb({ sources: result.sources })
+      // Keep the result so the next scan of this barcode (by anyone) doesn't search again.
+      if (user) {
+        saveUserProduct(user.uid, code, { name: result.name, brand: result.brand, ingredientsText: result.ingredientsText, sources: result.sources, source: 'ai' })
+          .catch((err) => console.error('Could not store the AI result', err))
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The web search failed')
     } finally {
@@ -191,11 +249,15 @@ export default function Scan() {
         </div>
       )}
       {webMissed && <p className="muted">The web search couldn't find this product's ingredients either. Check the packet.</p>}
-      {firebaseConfigured && addLabel && !form && (
+      {firebaseConfigured && formMode && !form && (
         user ? (
           <div className="row">
-            <Button onClick={() => setForm({ name: product?.name ?? '', brand: product?.brand ?? '', ingredientsText: product?.ingredientsText ?? '' })}>
-              {addLabel}
+            <Button
+              onClick={() =>
+                setForm({ mode: formMode, name: product?.name ?? '', brand: product?.brand ?? '', ingredientsText: product?.ingredientsText ?? '', reason: '' })
+              }
+            >
+              {formButton}
             </Button>
             {missing && <span className="muted">Type it from the packet so it's here next time, for you and others.</span>}
           </div>
@@ -206,8 +268,17 @@ export default function Scan() {
       {form && (
         <Card>
           <form className="stack" onSubmit={saveProduct}>
-            <h2>{notFound ? 'Add this product' : 'Product details'}</h2>
-            <p className="muted">Barcode {code}. Copy the details from the packet.</p>
+            <h2>{form.mode === 'report' ? 'Report a problem' : form.mode === 'edit' ? 'Edit your product' : notFound ? 'Add this product' : 'Add the ingredients'}</h2>
+            <p className="muted">
+              Barcode {code}. Copy the details from the packet.
+              {form.mode === 'report' && ' Your correction is sent for review; the product stays as it is until then.'}
+            </p>
+            {form.mode === 'report' && (
+              <label>
+                <span>What's wrong? <span className="muted">(optional)</span></span>
+                <textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} maxLength={1000} rows={2} placeholder="e.g. Wrong product, or it's missing milk" />
+              </label>
+            )}
             <label>
               Product name
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={300} required />
@@ -229,7 +300,7 @@ export default function Scan() {
             </label>
             <div className="row">
               <Button type="submit" variant="primary" disabled={saving || !form.name.trim() || !form.ingredientsText.trim()}>
-                {saving ? 'Saving…' : 'Save product'}
+                {saving ? 'Sending…' : form.mode === 'report' ? 'Send for review' : form.mode === 'edit' ? 'Save changes' : 'Save product'}
               </Button>
               <Button onClick={() => setForm(null)}>Cancel</Button>
             </div>
@@ -242,9 +313,12 @@ export default function Scan() {
       {product && (
         <Card>
           {web && <Chip label="Found online by AI · could be wrong" tone="check" />}
+          {storedAi && <Chip label="Not verified" tone="check" />}
+          {reported && <p className="warning-box" role="status">Someone reported this as wrong and it's being reviewed. Check the packet before eating.</p>}
           {addedBy && <UnverifiedTag mine={!addedByOther} />}
           <h2>{product.name}</h2>
           {product.brand && <p className="muted">{product.brand}</p>}
+          {source && <p className="muted">Source: {source}</p>}
           {myAllergens.length > 0 && (
             <SafetyBadge status={status} allergens={found} reason={status === 'check' ? checkReason : undefined} size="lg" />
           )}
@@ -272,7 +346,6 @@ export default function Scan() {
                   ))}
                 </p>
               )}
-              {web.searchSuggestions && <SearchSuggestions html={web.searchSuggestions} />}
             </>
           )}
         </Card>

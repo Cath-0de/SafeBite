@@ -17,6 +17,8 @@ export async function lookupBarcode(barcode: string): Promise<Product | null> {
   const res = await fetch(
     `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${fields}`,
   )
+  // Unknown barcodes come back as 404, which just means "no such product".
+  if (res.status === 404) return null
   if (!res.ok) throw new Error(`Open Food Facts request failed (${res.status})`)
   const data = await res.json()
   // status 1 means the product was found.

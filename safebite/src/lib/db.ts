@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 import { db } from './firebase'
-import type { IngredientRule, MealLog, Profile, RecentRecipe, SavedRecipe, RecipeVariant, Swap, Triggers, UserProduct, UserRecipe } from './schema'
+import type { IngredientRule, MealLog, Profile, RecentRecipe, SavedRecipe, ProductReport, RecipeVariant, Swap, Triggers, UserProduct, UserRecipe } from './schema'
 
 // Returns the database, or throws a clear error if Firebase isn't configured.
 function requireDb() {
@@ -155,9 +155,32 @@ export async function getUserProduct(barcode: string): Promise<UserProduct | nul
   return snap.exists() ? (snap.data() as UserProduct) : null
 }
 
-// Creates the product, or updates it if this user added it (firestore.rules blocks editing someone else's).
-export async function saveUserProduct(uid: string, barcode: string, product: { name: string; brand: string; ingredientsText: string }) {
-  await setDoc(doc(requireDb(), 'products', barcode), { ...product, addedBy: uid, updatedAt: serverTimestamp() })
+// Creates the product, or updates it if this user typed in the current version.
+// Anything else is corrected through reportProduct instead (firestore.rules).
+export async function saveUserProduct(
+  uid: string,
+  barcode: string,
+  product: Pick<UserProduct, 'name' | 'brand' | 'ingredientsText' | 'sources'> & { source: 'ai' | 'user' },
+) {
+  await setDoc(doc(requireDb(), 'products', barcode), withoutUndefined({ ...product, addedBy: uid, updatedAt: serverTimestamp() }))
+}
+
+// A "this is wrong" report with the user's corrected details, for review.
+export async function reportProduct(uid: string, barcode: string, reason: string, proposed: ProductReport['proposed']) {
+  await addDoc(collection(requireDb(), 'productReports'), {
+    barcode,
+    reason,
+    proposed,
+    reportedBy: uid,
+    status: 'open',
+    createdAt: serverTimestamp(),
+  })
+}
+
+// Whether a saved product has a report still waiting for review.
+export async function hasOpenReport(barcode: string) {
+  const q = query(collection(requireDb(), 'productReports'), where('barcode', '==', barcode), where('status', '==', 'open'), limit(1))
+  return !(await getDocs(q)).empty
 }
 
 // ---- User recipes: recipes/{recipeId} (RecipeForm.tsx; lib/recipes.ts turns them into Meals) ----

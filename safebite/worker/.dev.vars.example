@@ -1,0 +1,4 @@
+# Copy to .dev.vars (gitignored) for `npm run dev`. The deployed worker uses
+# `npx wrangler secret put <NAME>` instead.
+USDA_API_KEY=
+GROQ_API_KEY=

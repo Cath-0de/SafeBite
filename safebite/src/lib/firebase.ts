@@ -20,8 +20,8 @@ export const firebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfi
 
 export const app = firebaseConfigured ? initializeApp(firebaseConfig) : null
 
-// App Check proves requests come from this site, so others can't spend the
-// Gemini quota (lib/ai.ts). Skipped if VITE_RECAPTCHA_SITE_KEY isn't set.
+// App Check proves requests come from this site. Nothing enforces it yet (the AI
+// moved from Gemini to the Cloudflare worker). Skipped if VITE_RECAPTCHA_SITE_KEY isn't set.
 const recaptchaKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY
 if (app && recaptchaKey) {
   initializeAppCheck(app, { provider: new ReCaptchaV3Provider(recaptchaKey), isTokenAutoRefreshEnabled: true })

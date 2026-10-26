@@ -111,13 +111,17 @@ service cloud.firestore {
     }
 
     // ---- products/{barcode} ----
-    // Products users added when Open Food Facts lacked them. Any signed-in user
-    // can read them and add a new one; only the person who added one can edit it.
+    // Products Open Food Facts and USDA lacked: AI web-search results ('ai') and
+    // versions people typed from the packet ('user'). Any signed-in user can read
+    // them or add a missing one. Only whoever typed in a 'user' version can change
+    // it; corrections to anything else go through productReports for review.
     match /products/{barcode} {
       function validProduct() {
         return barcode.matches('^[0-9]{6,14}$')
-          && incoming().keys().hasOnly(['name', 'brand', 'ingredientsText', 'addedBy', 'updatedAt'])
-          && incoming().keys().hasAll(['name', 'brand', 'ingredientsText', 'addedBy', 'updatedAt'])
+          && incoming().keys().hasOnly(['name', 'brand', 'ingredientsText', 'source', 'sources', 'addedBy', 'updatedAt'])
+          && incoming().keys().hasAll(['name', 'brand', 'ingredientsText', 'source', 'addedBy', 'updatedAt'])
+          && incoming().source in ['ai', 'user']
+          && optionalList('sources', 10)
           && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 300
           && incoming().brand is string && incoming().brand.size() <= 200
           && incoming().ingredientsText is string && incoming().ingredientsText.size() > 0 && incoming().ingredientsText.size() <= 5000
@@ -127,7 +131,31 @@ service cloud.firestore {
 
       allow read: if request.auth != null;
       allow create: if request.auth != null && validProduct();
-      allow update: if request.auth != null && validProduct() && resource.data.addedBy == request.auth.uid;
+      allow update: if request.auth != null && validProduct()
+        && incoming().source == 'user'
+        && resource.data.get('source', 'user') == 'user'
+        && resource.data.addedBy == request.auth.uid;
+    }
+
+    // ---- productReports/{reportId} ----
+    // "This is wrong" reports with a corrected version, reviewed by hand in the
+    // Firebase console (which ignores these rules). Users can only file new ones.
+    match /productReports/{reportId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && incoming().keys().hasOnly(['barcode', 'reason', 'proposed', 'reportedBy', 'status', 'createdAt'])
+        && incoming().keys().hasAll(['barcode', 'reason', 'proposed', 'reportedBy', 'status', 'createdAt'])
+        && incoming().barcode is string && incoming().barcode.matches('^[0-9]{6,14}$')
+        && incoming().reason is string && incoming().reason.size() <= 1000
+        && incoming().proposed is map
+        && incoming().proposed.keys().hasOnly(['name', 'brand', 'ingredientsText'])
+        && incoming().proposed.keys().hasAll(['name', 'brand', 'ingredientsText'])
+        && incoming().proposed.name is string && incoming().proposed.name.size() <= 300
+        && incoming().proposed.brand is string && incoming().proposed.brand.size() <= 200
+        && incoming().proposed.ingredientsText is string && incoming().proposed.ingredientsText.size() <= 5000
+        && incoming().reportedBy == request.auth.uid
+        && incoming().status == 'open'
+        && incoming().createdAt == request.time;
     }
 
     // ---- recipes/{recipeId} ----

@@ -1,0 +1,26 @@
+# SafeBite's small API server on Cloudflare Workers. It holds the secret API
+# keys (USDA_API_KEY, GROQ_API_KEY) so they never reach the browser.
+# Secrets are NOT in this file: set them with `npx wrangler secret put <NAME>`,
+# and for local testing put them in .dev.vars (see .dev.vars.example).
+name = "safebite-api"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+# Sites allowed to call this API, comma separated. Add the hosted app's address
+# (e.g. https://your-project.web.app) once it's deployed. Any localhost port is
+# always allowed, for development.
+ALLOWED_ORIGINS = ""
+# Groq models (console.groq.com/docs/models). If Groq retires one, change it
+# here and run `npx wrangler deploy`; no code changes needed.
+GROQ_TEXT_MODEL = "openai/gpt-oss-20b"
+# Must support Groq's built-in browser_search tool (groq/compound was shut down
+# 2026-09-21). A different model from the text one, because each model has its
+# own daily token allowance and web searches use a lot of it.
+GROQ_SEARCH_MODEL = "openai/gpt-oss-120b"
+
+# Requests allowed per visitor (IP address) per 60 seconds, across all routes.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }

@@ -46,14 +46,30 @@ export interface MealLog {
   notes?: string
 }
 
-// products/{barcode}: a product a user added because Open Food Facts didn't
-// have it, or had no ingredients for it. Shared: every signed-in user sees it.
+// products/{barcode}: a product Open Food Facts and USDA didn't have (or had
+// no ingredients for), either found by the AI web search or typed by a user.
+// Shared: every signed-in user sees it. Only whoever typed in a 'user' version
+// can change it; everyone else reports problems (productReports) for review.
 export interface UserProduct {
   name: string
   brand: string
   ingredientsText: string
-  addedBy: string // uid; only they can edit it
+  source?: 'ai' | 'user' // missing on products saved before AI results were stored; those are 'user'
+  sources?: { title: string; uri: string }[] // for 'ai': the pages the web search found
+  addedBy: string // uid of whoever saved this version (for 'ai', who ran the search)
   updatedAt: Timestamp
+}
+
+// productReports/{reportId}: a user's "this is wrong" report on a saved product,
+// with their corrected details. Reviewed by hand in the Firebase console: copy
+// `proposed` into products/{barcode} if it's right, then set status.
+export interface ProductReport {
+  barcode: string
+  reason: string // what's wrong, in their words; may be empty
+  proposed: { name: string; brand: string; ingredientsText: string }
+  reportedBy: string // uid
+  status: 'open' | 'resolved' | 'rejected'
+  createdAt: Timestamp
 }
 
 // recipes/{recipeId}: a recipe a user wrote. Private ones only their owner can
