@@ -50,7 +50,7 @@ export default function RecipeForm() {
     getRecipe(id)
       .then((m) => {
         if (cancelled) return
-        if (!m || m.userRecipe?.ownerId !== user.uid) {
+        if (!m || m.userRecipe?.ownerId !== user.uid || m.userRecipe.ai) {
           setError('You can only edit recipes you added.')
           return
         }

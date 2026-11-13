@@ -54,7 +54,7 @@ export default function DesignPreview() {
       <h2>Card with ingredient list</h2>
       <Card>
         <IngredientList
-          allergenIds={['dairy', 'egg']}
+          allergies={{ allergens: ['dairy', 'egg'] }}
           ingredients={[
             { name: 'Spaghetti', measure: '200g' },
             { name: 'Butter', measure: '2 tbsp' },

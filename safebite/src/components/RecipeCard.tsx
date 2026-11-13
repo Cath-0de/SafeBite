@@ -6,16 +6,18 @@ import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import type { Meal } from '../api/mealdb'
 import { useAuth } from '../context/AuthContext'
-import { allergenRegex, allergensIn } from '../lib/allergens'
+import { allergenRegex, allergensIn, maybeAllergensIn, NO_ALLERGIES } from '../lib/allergens'
+import Chip from './Chip'
 import Icon from './Icon'
 import UnverifiedTag from './UnverifiedTag'
 
 export default function RecipeCard({ meal }: { meal: Meal }) {
   const { user, profile } = useAuth()
-  const myAllergens = profile?.allergens ?? []
+  const allergies = profile ?? NO_ALLERGIES
   const names = meal.ingredients.map((i) => i.name)
-  const found = allergensIn(myAllergens, names)
-  const re = allergenRegex(myAllergens)
+  const found = allergensIn(allergies, names)
+  const maybe = maybeAllergensIn(allergies, names)
+  const re = allergenRegex(allergies)
 
   return (
     <Link to={`/recipes/${meal.id}`} className="card">
@@ -24,7 +26,9 @@ export default function RecipeCard({ meal }: { meal: Meal }) {
       ) : (
         <div className="card-placeholder"><Icon name="recipes" size={40} /></div>
       )}
-      {meal.userRecipe && <UnverifiedTag mine={meal.userRecipe.ownerId === user?.uid} />}
+      {meal.userRecipe?.ai
+        ? <Chip label="Found online by AI · could be wrong" tone="check" />
+        : meal.userRecipe && <UnverifiedTag mine={meal.userRecipe.ownerId === user?.uid} />}
       <h2>{meal.name}</h2>
       {found.length > 0 && (
         <p className="allergy-flags">
@@ -32,6 +36,7 @@ export default function RecipeCard({ meal }: { meal: Meal }) {
           {found.map((a) => <span key={a} className="allergy-chip">{a}</span>)}
         </p>
       )}
+      {maybe.length > 0 && <p className="muted">May contain {maybe.map((m) => m.toLowerCase()).join(', ')}. Check before cooking.</p>}
       <p className="muted">{[meal.category, meal.area].filter(Boolean).join(' · ')}</p>
       <p className="ingredients">
         {names.map((n, i) => (

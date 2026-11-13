@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { ALLERGENS, allergenLabel } from '../lib/allergens'
-import { parseAllergies } from '../lib/ai'
+import { ALLERGENS, allergenLabel, type AllergyDetails } from '../lib/allergens'
+import { aiConfigured, parseAllergies, suggestAllergyNames } from '../lib/ai'
+import AllergyNames from './AllergyNames'
 import type { CurrentState, EnergyLevel, Profile } from '../lib/schema'
 
 // The answer options for the UC state and energy questions. `value` is what
@@ -25,6 +26,10 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
   // Google accounts come with a name, so offer it as the starting answer.
   const [name, setName] = useState(profile.name || user?.displayName || '')
   const [allergens, setAllergens] = useState<string[]>(profile.allergens)
+  // Per allergy: AI-suggested names for typed-in ones, and names added or unticked.
+  const [details, setDetails] = useState<AllergyDetails>(profile.allergyDetails ?? {})
+  // Typed-in allergies the AI is still suggesting names for.
+  const [loadingNames, setLoadingNames] = useState<string[]>([])
   // What's typed in the "something else" box, before it's added.
   const [otherAllergy, setOtherAllergy] = useState('')
   // While the AI (lib/ai.ts) reads the typed text, and what it found (or why it failed).
@@ -40,29 +45,53 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
 
   // Add the allergen if it's unchecked, remove it if it's already checked.
   function toggleAllergen(id: string) {
+    if (allergens.includes(id)) {
+      setSaved(false)
+      setAllergens((prev) => prev.filter((a) => a !== id))
+    } else addAllergies([id])
+  }
+
+  function setDetail(id: string, detail: AllergyDetails[string]) {
     setSaved(false)
-    setAllergens((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]))
+    setDetails((prev) => ({ ...prev, [id]: detail }))
+  }
+
+  // Ask the AI what a typed-in allergy goes by ("nightshades" → tomato, potato…).
+  // If it fails, the allergy just matches the typed word, and the user can add names.
+  function fetchNames(id: string) {
+    setLoadingNames((prev) => [...prev, id])
+    suggestAllergyNames(id)
+      .then(({ names, maybe }) => {
+        if (names.length) setDetails((prev) => ({ ...prev, [id]: { ...prev[id], names, maybe } }))
+      })
+      .catch((err) => console.error('Could not suggest names for', id, err))
+      .finally(() => setLoadingNames((prev) => prev.filter((x) => x !== id)))
   }
 
   // Allergies the user typed in themselves (anything that isn't a checkbox id).
   const custom = allergens.filter((a) => !ALLERGENS.some((k) => k.id === a))
 
-  // Tick or add each allergy, skipping ones already there.
+  // Tick or add each allergy, skipping ones already there. New typed-in ones get AI-suggested names.
   function addAllergies(ids: string[]) {
     setSaved(false)
+    const fresh = ids.filter((id) => !allergens.includes(id))
     setAllergens((prev) => [...new Set([...prev, ...ids])])
+    if (aiConfigured) {
+      fresh.filter((id) => !ALLERGENS.some((a) => a.id === id) && !details[id]?.names?.length).forEach(fetchNames)
+    }
   }
 
-  // Add the typed allergy. One or two words ("kiwi", "dairy") are added as typed,
-  // ticking the matching checkbox if there is one. Anything longer ("milk makes
-  // me bloated and I can't eat prawns") goes to the AI to pick out the foods.
+  // Add the typed allergy. An exact checkbox name ("dairy") just ticks it.
+  // Anything else ("artificial stuff", "milk makes me bloated and I can't eat
+  // prawns") goes to the AI to pick out what they react to, mapped onto the
+  // checkboxes where it fits. Without the AI, short text is added as typed.
   // Either way nothing is saved until the user checks the answers and presses Save.
   async function addOtherAllergy() {
     const text = otherAllergy.trim().toLowerCase()
     if (!text) return
     setParseNote('')
-    if (text.split(/\s+/).length <= 2) {
-      const match = ALLERGENS.find((a) => a.id === text || a.label.toLowerCase() === text)
+    const match = ALLERGENS.find((a) => a.id === text || a.label.toLowerCase() === text)
+    if (match || (!aiConfigured && text.split(/\s+/).length <= 2)) {
       addAllergies([match?.id ?? text])
       setOtherAllergy('')
       return
@@ -79,7 +108,11 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
       }
     } catch (err) {
       console.error(err)
-      setParseNote("Couldn't read that right now. Try typing just the food's name.")
+      // A short name still works without the AI; a sentence needs it.
+      if (text.split(/\s+/).length <= 2) {
+        addAllergies([text])
+        setOtherAllergy('')
+      } else setParseNote("Couldn't read that right now. Try typing just the food's name.")
     } finally {
       setParsing(false)
     }
@@ -92,7 +125,14 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
     setError('')
     setSaved(false)
     try {
-      await saveProfile({ name: name.trim(), allergens, hasUC, currentState, energyLevel })
+      // Keep details only for current allergies, without empty lists (Firestore rejects undefined).
+      const allergyDetails = Object.fromEntries(
+        allergens.flatMap((id) => {
+          const kept = Object.entries(details[id] ?? {}).filter(([, v]) => Array.isArray(v) && v.length)
+          return kept.length ? [[id, Object.fromEntries(kept)]] : []
+        }),
+      )
+      await saveProfile({ name: name.trim(), allergens, allergyDetails, hasUC, currentState, energyLevel })
       setSaved(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -148,7 +188,7 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
         <legend>Do you have any food allergies or restrictions?</legend>
         <p className="muted">Select all that apply, or leave blank if none.</p>
         <div className="choices">
-          {ALLERGENS.map((a) => (
+          {ALLERGENS.filter((a) => a.common).map((a) => (
             <label key={a.id} className="choice">
               <input type="checkbox" checked={allergens.includes(a.id)} onChange={() => toggleAllergen(a.id)} />
               {a.label}
@@ -162,6 +202,18 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
             </span>
           ))}
         </div>
+        {/* The rest of the bank, folded away unless one of them is picked. */}
+        <details className="more-allergies" open={ALLERGENS.some((a) => !a.common && profile.allergens.includes(a.id))}>
+          <summary>More allergies and intolerances</summary>
+          <div className="choices">
+            {ALLERGENS.filter((a) => !a.common).map((a) => (
+              <label key={a.id} className="choice">
+                <input type="checkbox" checked={allergens.includes(a.id)} onChange={() => toggleAllergen(a.id)} />
+                {a.label}
+              </label>
+            ))}
+          </div>
+        </details>
         <div className="other-allergy">
           <input
             value={otherAllergy}
@@ -183,6 +235,20 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
         </div>
         {parseNote && <p className="muted" role="status">{parseNote}</p>}
       </fieldset>
+
+      {/* Question 3b: the names each allergy goes by, to untick any the user is fine with. */}
+      {allergens.length > 0 && (
+        <fieldset>
+          <legend>What should we look for?</legend>
+          <p className="muted">
+            We flag ingredients with these names. Untick any you're fine with. Amber names only sometimes contain it, so we mark those “Check”.
+            Not sure how allergic you are? Use Select all to flag every name.
+          </p>
+          {allergens.map((id) => (
+            <AllergyNames key={id} id={id} details={details} loading={loadingNames.includes(id)} onChange={(d) => setDetail(id, d)} />
+          ))}
+        </fieldset>
+      )}
 
       {/* Questions 4 and 5: UC flare state and energy. Only asked of UC users. */}
       {hasUC && (

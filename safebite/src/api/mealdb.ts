@@ -15,8 +15,9 @@ export interface Meal {
   // Links the API may or may not have for a recipe.
   youtube?: string
   source?: string
-  // Set only for recipes users wrote (lib/recipes.ts), never for TheMealDB's.
-  userRecipe?: { ownerId: string; shared: boolean }
+  // Set only for recipes in Firestore (lib/recipes.ts), never for TheMealDB's.
+  // ai: the AI web search found it, rather than a user writing it.
+  userRecipe?: { ownerId: string; shared: boolean; ai?: boolean }
 }
 
 // A recipe as the API sends it. Ingredients arrive as 20 numbered fields
@@ -117,10 +118,55 @@ async function listNames(kind: 'i' | 'a' | 'c'): Promise<string[]> {
   return data.meals.map((m) => m[LIST_FIELD[kind]])
 }
 
+// "pasta without cheese and nuts", "no nuts", "dairy-free": what a recipe must not have.
+// "no nuts, chicken" also leaves out chicken: wrongly leaving something out is
+// safer than searching for what someone wanted to avoid.
+const EXCLUSION = /\b(?:without|no(?! bake\b))\s+(.+?)(?=\bwith\b|$)|\b([a-z]+)[\s-]free\b/g
+const FILLER = /\b(?:recipes?|how to (?:make|cook)|i want|ideas?|some|please|for|an?|the|me|my)\b/g
+
+export function parseExclusions(query: string): string[] {
+  const found = [...query.toLowerCase().matchAll(EXCLUSION)].flatMap((m) => (m[1] ?? m[2]).split(/,|\+|&|\band\b|\bor\b/))
+  return [...new Set(found.map((t) => t.trim()).filter(Boolean))]
+}
+
+// The query with its exclusions and filler words ("a recipe for") taken out.
+const wantedPart = (query: string) =>
+  query.toLowerCase().replace(EXCLUSION, ',').replace(FILLER, ' ').replace(/\s+/g, ' ').trim()
+
 // Splits "steak and pasta", "steak, pasta" or "chicken + rice & garlic" into separate items.
 export function parseTerms(query: string): string[] {
-  const terms = query.toLowerCase().split(/,|\+|&|\band\b|\bwith\b/).map((t) => t.trim())
+  const terms = wantedPart(query).split(/,|\+|&|\band\b|\bwith\b/).map((t) => t.trim())
   return [...new Set(terms.filter(Boolean))]
+}
+
+// How many single-letter changes turn one word into the other.
+function editDistance(a: string, b: string) {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    let diagonal = row[0]
+    row[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const above = row[j]
+      row[j] = Math.min(above + 1, row[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1))
+      diagonal = above
+    }
+  }
+  return row[b.length]
+}
+
+// The name a misspelled term most likely meant ("chiken" → "chicken"), or null
+// if none is close. Short words get no leeway: "rice" isn't a typo of "ice".
+export function closestName(term: string, names: string[]): string | null {
+  let best: string | null = null
+  let bestDistance = term.length >= 6 ? 3 : term.length >= 4 ? 2 : 0
+  for (const name of names) {
+    const distance = editDistance(term, name.toLowerCase())
+    if (distance < bestDistance) {
+      best = name.toLowerCase()
+      bestDistance = distance
+    }
+  }
+  return best
 }
 
 // Lowercases and roughly singularizes each word, so "Tomatoes" and "tomato"
@@ -130,7 +176,7 @@ const stems = (text: string) =>
 
 // True if every word of `term` appears, in order, as whole words in `text`
 // ("chicken breast" is in "Chicken Breasts"; "egg" is not in "Eggplant").
-function hasWords(text: string, term: string) {
+export function hasWords(text: string, term: string) {
   return ` ${stems(text).join(' ')} `.includes(` ${stems(term).join(' ')} `)
 }
 
@@ -164,6 +210,12 @@ async function vocabulary() {
   return { ingredients, areas, categories }
 }
 type Vocabulary = Awaited<ReturnType<typeof vocabulary>>
+
+// Every name the search understands, for the search box's suggestions.
+export async function searchSuggestions() {
+  const { ingredients, areas, categories } = await vocabulary()
+  return [...new Set([...categories, ...areas, ...ingredients])]
+}
 
 // "italian chicken" has no separator, but isn't an ingredient, category or
 // cuisine either, so it is treated as two items. "chicken breast" stays whole.
@@ -206,20 +258,46 @@ export interface SearchResult {
   unmatched: string[]
   // True when no recipe has every item, so `meals` holds the recipes with the most of them.
   partial: boolean
+  // Misspelled items that were searched as the closest known name instead.
+  corrected: { from: string; to: string }[]
 }
 
 // Finds recipes that match every item in the query ("steak and pasta" means
 // recipes with both). If none do, returns the recipes matching the most items.
-// Recipes whose names contain the items come first.
-export async function searchMeals(query: string): Promise<SearchResult> {
+// Recipes whose names contain the items come first. `keep` says which recipes
+// the caller will show: lookups continue until MAX_LOOKUPS of those are loaded,
+// so a filter doesn't make the database look emptier than it is.
+export async function searchMeals(query: string, keep: (m: Meal) => boolean = () => true): Promise<SearchResult> {
   const vocab = await vocabulary()
   const terms = splitUnknownPhrases(parseTerms(query), vocab)
+  // Only exclusions ("dairy free"): there's nothing to look for, so offer the usual recipes.
+  if (!terms.length) {
+    const meals = await browseMeals()
+    return { meals, total: meals.length, terms, unmatched: [], partial: false, corrected: [] }
+  }
   // Also look up the whole phrase as a name, so "mac and cheese" still finds
   // "Mac and Cheese" even though "mac" alone isn't an ingredient.
   const [matches, phrase] = await Promise.all([
     Promise.all(terms.map((t) => matchTerm(t, vocab))),
-    terms.length > 1 ? fetchMeals(`search.php?s=${encodeURIComponent(query.trim())}`) : [],
+    terms.length > 1 ? fetchMeals(`search.php?s=${encodeURIComponent(wantedPart(query))}`) : [],
   ])
+
+  // An item nothing matched may be a typo, so try the closest known name. This
+  // comes after searching so a real recipe name is never "corrected", and before
+  // the page's AI lookup so a typo doesn't use up AI tokens.
+  const corrected: SearchResult['corrected'] = []
+  const vocabNames = [...vocab.ingredients, ...vocab.areas, ...vocab.categories]
+  if (!phrase.length) {
+    await Promise.all(terms.map(async (term, i) => {
+      const fix = matches[i].ids.size === 0 ? closestName(term, vocabNames) : null
+      if (!fix) return
+      const match = await matchTerm(fix, vocab)
+      if (match.ids.size === 0) return
+      matches[i] = match
+      terms[i] = fix
+      corrected.push({ from: term, to: fix })
+    }))
+  }
   const unmatched = terms.filter((_, i) => matches[i].ids.size === 0)
 
   // Count how many items each recipe matches, and keep the recipes with the
@@ -235,12 +313,23 @@ export async function searchMeals(query: string): Promise<SearchResult> {
   const nameHits = (id: string) => matches.filter((m) => m.byName.some((n) => n.id === id)).length
   ids.sort((a, b) => nameHits(b) - nameHits(a))
 
-  // Use recipes we already have in full, and look up the rest (up to the cap).
-  const toLookUp = ids.filter((id) => !known.has(id)).slice(0, MAX_LOOKUPS)
-  const looked = await Promise.all(toLookUp.map((id) => fetchMeals(`lookup.php?i=${id}`)))
-  looked.flat().forEach((m) => known.set(m.id, m))
+  // Use recipes we already have in full, and look up the rest in batches until enough are kept.
+  const toLookUp = ids.filter((id) => !known.has(id))
+  let kept = [...known.values()].filter(keep).length
+  for (let i = 0; i < toLookUp.length && kept < MAX_LOOKUPS; i += MAX_LOOKUPS) {
+    try {
+      const looked = await Promise.all(toLookUp.slice(i, i + MAX_LOOKUPS).map((id) => fetchMeals(`lookup.php?i=${id}`)))
+      looked.flat().forEach((m) => known.set(m.id, m))
+      kept += looked.flat().filter(keep).length
+    } catch (err) {
+      // Fail only if there's nothing to show: fewer recipes beats an error.
+      if (kept === 0) throw err
+      console.error('Stopped looking up recipes early', err)
+      break
+    }
+  }
   const meals = ids.flatMap((id) => known.get(id) ?? [])
-  return { meals, total: ids.length, terms, unmatched, partial: partial && phrase.length === 0 }
+  return { meals, total: ids.length, terms, unmatched, partial: partial && phrase.length === 0, corrected }
 }
 
 // One full recipe by id, or undefined if the id doesn't exist.

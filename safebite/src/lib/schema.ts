@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore'
+import type { AllergyDetails } from './allergens'
 
 // Firestore document shapes. firestore.rules enforces the same fields and
 // enums, so keep the two in sync when either changes.
@@ -14,6 +15,7 @@ export interface Profile {
   name: string // empty until the user answers the setup questions
   createdAt: Timestamp
   allergens: string[] // ids from lib/allergens.ts, plus any allergies the user typed in (lowercase)
+  allergyDetails?: AllergyDetails // per allergy: AI-suggested names for typed-in ones, names added or unticked
   hasUC?: boolean // missing on profiles made before the question existed; treat as true
   currentState: CurrentState
   energyLevel: EnergyLevel
@@ -75,7 +77,8 @@ export interface ProductReport {
 // recipes/{recipeId}: a recipe a user wrote. Private ones only their owner can
 // read; shared ones every signed-in user can. Shown with a "Not verified" tag.
 // The app refers to these as "u_" + recipeId (lib/recipes.ts), so they can't
-// clash with TheMealDB's numeric ids.
+// clash with TheMealDB's numeric ids. source 'ai' means the AI web search found
+// it (ownerId is who ran the search), so the next search needn't use the AI.
 export interface UserRecipe {
   name: string
   category: string
@@ -84,6 +87,8 @@ export interface UserRecipe {
   ingredients: { name: string; measure: string }[]
   tags: string[]
   shared: boolean
+  source?: 'ai' // missing on recipes people wrote
+  sourceUrl?: string // for 'ai': the page it came from
   ownerId: string
   createdAt: Timestamp
   updatedAt: Timestamp

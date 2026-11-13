@@ -13,7 +13,7 @@ import { useAuth } from '../context/AuthContext'
 import { aiConfigured, findProductOnline, type WebProduct } from '../lib/ai'
 import { getUserProduct, hasOpenReport, reportProduct, saveUserProduct } from '../lib/db'
 import { firebaseConfigured } from '../lib/firebase'
-import { allergenRegex, allergensIn } from '../lib/allergens'
+import { allergenRegex, allergensIn, maybeAllergensIn, NO_ALLERGIES } from '../lib/allergens'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import Chip from '../components/Chip'
@@ -54,18 +54,23 @@ export default function Scan() {
   // Whether the camera view is open.
   const [scanning, setScanning] = useState(false)
   const { user, profile } = useAuth()
-  const myAllergens = profile?.allergens ?? []
-  const re = allergenRegex(myAllergens)
+  const allergies = profile ?? NO_ALLERGIES
+  const myAllergens = allergies.allergens
+  const re = allergenRegex(allergies)
+  const maybeRe = allergenRegex(allergies, 'maybe')
   // One part per ingredient, with the separators kept as their own parts so the text joins back unchanged.
   const parts = product ? product.ingredientsText.split(/([,;()[\]])/) : []
-  const found = product ? allergensIn(myAllergens, [...parts, ...product.allergens]) : []
+  const found = product ? allergensIn(allergies, [...parts, ...product.allergens]) : []
+  // Allergies only a "sometimes contains" ingredient hints at ("natural flavors" for dairy).
+  const maybe = product ? maybeAllergensIn(allergies, parts) : []
   const addedByOther = Boolean(addedBy && addedBy !== user?.uid)
   // Shown from products/{barcode}, or a fresh AI result: these can be reported.
   // Nothing listed, only what the AI found online, or someone else's typing means we can't be sure: ask the user to check the packet.
   const status: SafetyStatus = found.length
     ? 'contains'
-    : reported || web || storedAi || addedByOther || (product && !product.ingredientsText && !product.allergens.length) ? 'check' : 'safe'
-  const checkReason = reported ? 'reported as wrong'
+    : maybe.length || reported || web || storedAi || addedByOther || (product && !product.ingredientsText && !product.allergens.length) ? 'check' : 'safe'
+  const checkReason = maybe.length ? `may contain ${maybe.map((m) => m.toLowerCase()).join(', ')}`
+    : reported ? 'reported as wrong'
     : web ? 'found online, could be wrong'
     : storedAi ? 'not verified'
     : addedByOther ? 'added by another user' : 'no ingredients listed'
@@ -326,8 +331,10 @@ export default function Scan() {
           <p className="ingredients">
             {!product.ingredientsText
               ? 'No ingredients listed.'
-              : re
-                ? parts.map((part, i) => (re.test(part) ? <mark key={i}>{part}</mark> : part))
+              : re || maybeRe
+                ? parts.map((part, i) =>
+                    re?.test(part) ? <mark key={i}>{part}</mark> : maybeRe?.test(part) ? <mark key={i} className="maybe">{part}</mark> : part,
+                  )
                 : product.ingredientsText}
           </p>
           {web && (

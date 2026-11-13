@@ -3,7 +3,10 @@
 //   GET  /usda?barcode=<digits>  →  { product: { name, brand, ingredientsText } | null }
 //   POST /ai/allergies    { text, allergens: [{ id, label }] }  →  { known: string[], other: string[] }
 //   POST /ai/ingredients  { meal }                              →  { ingredients: string[] }
+//   POST /ai/allergy-names { allergy }                          →  { names: string[], maybe: string[] }
+//   POST /ai/swaps        { recipe, ingredients, items: [{ ingredient, reason }], avoid } → { swaps: [{ ingredient, canOmit, replacement, note }] }
 //   POST /ai/product      { barcode, name?, brand? }            →  { product: { name, brand, ingredientsText, sources } | null }
+//   POST /ai/recipes      { query, avoid }                      →  { recipes: [{ name, category, area, url, ingredients: [{ name, measure }], instructions }] }
 // The /ai routes use Groq (console.groq.com). Model names are in wrangler.toml,
 // so a retired model can be swapped without changing this code.
 
@@ -90,7 +93,7 @@ interface GroqMessage {
 
 // mode: 'json' asks for a JSON object; 'search' lets the model search the web first
 // (Groq's built-in browser_search tool, which can't be combined with JSON mode).
-async function groq(env: Env, model: string, prompt: string, mode: 'json' | 'search'): Promise<GroqMessage> {
+async function groq(env: Env, model: string, prompt: string, mode: 'json' | 'search', maxTokens = 1024): Promise<GroqMessage> {
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
@@ -100,7 +103,7 @@ async function groq(env: Env, model: string, prompt: string, mode: 'json' | 'sea
       temperature: 0.2,
       // Keep each request small: the free tier has a daily token allowance per model.
       reasoning_effort: 'low',
-      max_completion_tokens: 1024,
+      max_completion_tokens: maxTokens,
       ...(mode === 'json'
         ? { response_format: { type: 'json_object' } }
         : { tools: [{ type: 'browser_search' }], tool_choice: 'required' }),
@@ -138,17 +141,19 @@ const stringList = (v: unknown, maxItems: number, maxLen: number) =>
 async function readAllergies(body: Record<string, unknown>, env: Env) {
   const text = str(body.text, 1000, 'text')
   const allergens = (Array.isArray(body.allergens) ? body.allergens : [])
-    .slice(0, 30)
+    .slice(0, 80)
     .map((a) => ({ id: optionalStr(a?.id, 30), label: optionalStr(a?.label, 50) }))
     .filter((a) => /^[a-z-]+$/.test(a.id))
   const prompt = `A user described their food allergies or intolerances. Reply with a JSON object {"known": [...], "other": [...]}.
-Put each food they react to in "known" if it matches one of these ids: ${allergens.map((a) => `${a.id} (${a.label})`).join(', ')}.
-Put anything else in "other" as a short lowercase food name (1-3 words). Ignore anything that isn't a food they react to.
+Count foods, food groups and types of ingredient or additive they react to (e.g. "artificial stuff", "sulfites", "msg", "nightshades").
+Put each one in "known" if it matches one of these ids: ${allergens.map((a) => `${a.id} (${a.label})`).join(', ')}.
+Put anything else in "other" under its clearest standard name, lowercase, 1-3 words (e.g. "sulfites", not "sulfite things").
+Ignore anything that isn't something they react to.
 
 User's description: """${text}"""`
   const reply = parseJson((await groq(env, env.GROQ_TEXT_MODEL, prompt, 'json')).content)
   const ids = new Set(allergens.map((a) => a.id))
-  return { known: stringList(reply.known, 30, 30).filter((k) => ids.has(k)), other: stringList(reply.other, 20, 50) }
+  return { known: stringList(reply.known, 40, 30).filter((k) => ids.has(k)), other: stringList(reply.other, 20, 50) }
 }
 
 // "chicken soup and toast" → its likely ingredients, for the meal log.
@@ -160,6 +165,26 @@ Reply with a JSON object {"ingredients": [...]}: simple lowercase ingredient nam
 Meal: """${meal}"""`
   const reply = parseJson((await groq(env, env.GROQ_TEXT_MODEL, prompt, 'json')).content)
   return { ingredients: [...new Set(stringList(reply.ingredients, 25, 60))] }
+}
+
+// "nightshades" → the names it goes by on labels and in recipes, plus ones that
+// only sometimes contain it. Kept for 30 days per allergy, so everyone typing the
+// same allergy gets the same list and it costs one AI call.
+async function allergyNames(body: Record<string, unknown>, env: Env) {
+  const allergy = str(body.allergy, 50, 'allergy').toLowerCase()
+  const cacheKey = new Request(`https://safebite-cache.internal/ai/allergy-names/v2/${encodeURIComponent(allergy)}`)
+  const cached = await caches.default.match(cacheKey)
+  if (cached) return cached.json()
+  const prompt = `Someone is allergic or intolerant to: "${allergy}". It may be a food, a food group, or a type of ingredient or additive (e.g. sulfites, MSG, artificial additives).
+Reply with a JSON object {"names": [...], "maybe": [...]}.
+"names": ingredient names that mean a food contains it, exactly as they appear on food labels and in recipes: its common forms, names derived from it, and for additives their label names and E-numbers. Include "${allergy}" itself only if it would appear on a label. At most 20.
+"maybe": ingredient names that only sometimes contain it (e.g. "natural flavors", "spice blend"). At most 6.
+Lowercase, 1-4 words each, no explanations. If it isn't something food can contain, reply {"names": [], "maybe": []}.`
+  const reply = parseJson((await groq(env, env.GROQ_TEXT_MODEL, prompt, 'json')).content)
+  const names = [...new Set(stringList(reply.names, 20, 40))]
+  const result = { names, maybe: stringList(reply.maybe, 6, 40).filter((m) => !names.includes(m)) }
+  await caches.default.put(cacheKey, new Response(JSON.stringify(result), { headers: { 'Cache-Control': 'max-age=2592000' } }))
+  return result
 }
 
 // Searches the web for a product's ingredient list. null if it can't find this exact product.
@@ -199,18 +224,105 @@ If you can't find this exact product's ingredients, reply only: NOT FOUND`
     (text.match(new RegExp(`^[ \\t*]*${key}[ \\t*]*:(.*)$`, 'im'))?.[1] ?? '').replace(/^[\s*]+|[\s*]+$/g, '').slice(0, max)
   const ingredientsText = field('INGREDIENTS', 3000)
   if (!ingredientsText) return { product: null }
-  const sources = (message.executed_tools ?? [])
-    .flatMap((t) => t.search_results?.results ?? [])
-    .filter((r): r is { title?: string; url: string } => typeof r.url === 'string' && /^https?:\/\//.test(r.url))
+  const sources = searchResults(message)
     .map((r) => ({ title: (r.title || new URL(r.url).hostname).slice(0, 200), uri: r.url }))
     .slice(0, 5)
   return { product: { name: field('NAME', 300) || name || 'Unknown product', brand: field('BRAND', 200) || brand, ingredientsText, sources } }
 }
 
+// The pages a web-searching model actually looked at.
+const searchResults = (message: GroqMessage) =>
+  (message.executed_tools ?? [])
+    .flatMap((t) => t.search_results?.results ?? [])
+    .filter((r): r is { title?: string; url: string } => typeof r.url === 'string' && /^https?:\/\//.test(r.url))
+
+// Searches the web for recipes the database lacks, leaving out what the cook
+// must avoid. Kept for 7 days per search + allergies, like product searches.
+async function findRecipes(body: Record<string, unknown>, env: Env) {
+  const query = str(body.query, 100, 'query').toLowerCase()
+  const avoid = [...new Set((Array.isArray(body.avoid) ? body.avoid : []).slice(0, 40).map((a) => optionalStr(a, 60).toLowerCase()).filter(Boolean))].sort()
+
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ query, avoid })))
+  const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
+  const cacheKey = new Request(`https://safebite-cache.internal/ai/recipes/${hash}`)
+  const cached = await caches.default.match(cacheKey)
+  if (cached) return cached.json()
+
+  const prompt = `Find real recipes for: "${query}".
+Do exactly ONE web search, with the query: ${query} recipe${avoid.length ? ` without ${avoid.join(' ')}` : ''}
+Answer from that one search's results. Don't search again or open more pages.
+Give up to 5 different recipes.${avoid.length ? ` Skip any recipe that contains or is usually made with: ${avoid.join(', ')}.` : ''}
+Reply with only a JSON object and nothing else:
+{"recipes": [{"name": "<recipe name>", "category": "<e.g. Dessert, or empty>", "area": "<cuisine, or empty>", "url": "<the page it came from>", "ingredients": [{"name": "<ingredient only>", "measure": "<amount, or empty>"}], "instructions": "<the steps, one per line, at most 8 short lines>"}]}
+If nothing fits, reply {"recipes": []}.`
+  const message = await groq(env, env.GROQ_SEARCH_MODEL, prompt, 'search', 4000)
+  // Search mode can't force JSON, so the object may come wrapped in other text.
+  const text = message.content ?? ''
+  const reply = parseJson(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1))
+  // A cut-off or garbled reply isn't an answer: fail, and don't keep it for 7 days.
+  if (!Array.isArray(reply.recipes)) throw new Error('The recipe search sent an unreadable reply')
+
+  // Only link pages the search really returned, not URLs the model may have made up.
+  const pages = new Set(searchResults(message).map((r) => r.url))
+  const recipes = reply.recipes.slice(0, 5).flatMap((r: Record<string, unknown>) => {
+    const name = optionalStr(r?.name, 200)
+    const instructions = optionalStr(r?.instructions, 5000)
+    const ingredients = (Array.isArray(r?.ingredients) ? r.ingredients : [])
+      .slice(0, 50)
+      .map((i) => ({ name: optionalStr(i?.name, 120), measure: optionalStr(i?.measure, 60) }))
+      .filter((i) => i.name)
+    if (!name || !instructions || !ingredients.length) return []
+    const url = optionalStr(r?.url, 500)
+    return [{ name, category: optionalStr(r?.category, 60), area: optionalStr(r?.area, 60), url: pages.has(url) ? url : '', ingredients, instructions }]
+  })
+  const result = { recipes: [...new Map(recipes.map((r) => [r.name.toLowerCase(), r])).values()] }
+  await caches.default.put(cacheKey, new Response(JSON.stringify(result), { headers: { 'Cache-Control': 'max-age=604800' } }))
+  return result
+}
+
+// For each ingredient someone can't eat in a recipe: can it be left out, and
+// what to use instead. Kept for 30 days per recipe + ingredients + allergies,
+// so the next person with the same allergies doesn't use another AI call.
+async function recipeSwaps(body: Record<string, unknown>, env: Env) {
+  const recipe = str(body.recipe, 200, 'recipe')
+  const ingredients = (Array.isArray(body.ingredients) ? body.ingredients : []).slice(0, 40).map((i) => optionalStr(i, 120)).filter(Boolean)
+  const items = (Array.isArray(body.items) ? body.items : [])
+    .slice(0, 20)
+    .map((i) => ({ ingredient: optionalStr(i?.ingredient, 120), reason: optionalStr(i?.reason, 120) }))
+    .filter((i) => i.ingredient)
+  const avoid = (Array.isArray(body.avoid) ? body.avoid : []).slice(0, 40).map((a) => optionalStr(a, 60)).filter(Boolean)
+  if (!items.length) throw new BadRequest('items must list at least one ingredient')
+
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ recipe, ingredients, items, avoid })))
+  const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
+  const cacheKey = new Request(`https://safebite-cache.internal/ai/swaps/${hash}`)
+  const cached = await caches.default.match(cacheKey)
+  if (cached) return cached.json()
+
+  const prompt = `Recipe: "${recipe}". Its ingredients: ${ingredients.join(', ')}.
+The cook must avoid: ${avoid.join(', ') || 'the ingredients listed below'}.
+For each ingredient below, say whether it can simply be left out without ruining the dish (a garnish, topping, or small optional amount), and the best common replacement that contains none of the avoided things. If nothing works, leave "replacement" empty.
+${items.map((i, n) => `${n + 1}. ${i.ingredient}${i.reason ? ` (${i.reason})` : ''}`).join('\n')}
+Reply with a JSON object {"swaps": [{"ingredient": "<exactly as written above>", "canOmit": true or false, "replacement": "<a few words, or empty>", "note": "<at most 15 words: amount or how to use it, or empty>"}]}.`
+  const reply = parseJson((await groq(env, env.GROQ_TEXT_MODEL, prompt, 'json')).content)
+  const wanted = new Map(items.map((i) => [i.ingredient.toLowerCase(), i.ingredient]))
+  const swaps = (Array.isArray(reply.swaps) ? reply.swaps : []).flatMap((s: Record<string, unknown>) => {
+    const ingredient = wanted.get(optionalStr(s?.ingredient, 120).toLowerCase())
+    if (!ingredient) return []
+    return [{ ingredient, canOmit: s?.canOmit === true, replacement: optionalStr(s?.replacement, 80), note: optionalStr(s?.note, 150) }]
+  })
+  const result = { swaps }
+  await caches.default.put(cacheKey, new Response(JSON.stringify(result), { headers: { 'Cache-Control': 'max-age=2592000' } }))
+  return result
+}
+
 const AI_ROUTES: Record<string, (body: Record<string, unknown>, env: Env) => Promise<unknown>> = {
+  '/ai/swaps': recipeSwaps,
   '/ai/allergies': readAllergies,
   '/ai/ingredients': guessIngredients,
   '/ai/product': findProduct,
+  '/ai/recipes': findRecipes,
+  '/ai/allergy-names': allergyNames,
 }
 
 export default {

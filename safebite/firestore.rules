@@ -24,10 +24,11 @@ service cloud.firestore {
 
     // ---- profiles/{uid} ----
     function validProfileFields() {
-      return incoming().keys().hasOnly(['email', 'name', 'createdAt', 'allergens', 'hasUC', 'currentState', 'energyLevel', 'updatedAt'])
+      return incoming().keys().hasOnly(['email', 'name', 'createdAt', 'allergens', 'allergyDetails', 'hasUC', 'currentState', 'energyLevel', 'updatedAt'])
         && incoming().keys().hasAll(['email', 'name', 'createdAt', 'allergens', 'currentState', 'energyLevel', 'updatedAt'])
         && incoming().name is string && incoming().name.size() <= 100
         && incoming().allergens is list && incoming().allergens.size() <= 50
+        && (!('allergyDetails' in incoming()) || (incoming().allergyDetails is map && incoming().allergyDetails.size() <= 50))
         && (!('hasUC' in incoming()) || incoming().hasUC is bool)
         && incoming().currentState in ['flare', 'remission']
         && incoming().energyLevel in ['low', 'medium', 'high']
@@ -163,8 +164,10 @@ service cloud.firestore {
     // signed-in user can. Only the owner can change or delete one.
     match /recipes/{recipeId} {
       function validRecipe() {
-        return incoming().keys().hasOnly(['name', 'category', 'area', 'instructions', 'ingredients', 'tags', 'shared', 'ownerId', 'createdAt', 'updatedAt'])
+        return incoming().keys().hasOnly(['name', 'category', 'area', 'instructions', 'ingredients', 'tags', 'shared', 'source', 'sourceUrl', 'ownerId', 'createdAt', 'updatedAt'])
           && incoming().keys().hasAll(['name', 'category', 'area', 'instructions', 'ingredients', 'tags', 'shared', 'ownerId', 'createdAt', 'updatedAt'])
+          && (!('source' in incoming()) || incoming().source == 'ai')
+          && (!('sourceUrl' in incoming()) || (incoming().sourceUrl is string && incoming().sourceUrl.size() <= 500 && incoming().sourceUrl.matches('^https?://.+')))
           && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 200
           && incoming().category is string && incoming().category.size() <= 60
           && incoming().area is string && incoming().area.size() <= 60
