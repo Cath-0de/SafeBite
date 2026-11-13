@@ -4,7 +4,7 @@
 // contain the allergy. There's Select all / Deselect all, a box to add a name
 // we missed, and a line saying where the list came from.
 import { useState } from 'react'
-import { allergenLabel, ALLERGENS, groupsFor, type AllergyDetails } from '../lib/allergens'
+import { allergenLabel, groupsFor, inBank, type AllergyDetails } from '../lib/allergens'
 import Button from './Button'
 
 type Detail = AllergyDetails[string]
@@ -12,11 +12,12 @@ type Detail = AllergyDetails[string]
 // Groups longer than this start folded, so big lists (artificial colours) don't swamp the page.
 const FOLD_OVER = 10
 
-export default function AllergyNames({ id, details, loading, onChange }: {
+export default function AllergyNames({ id, details, loading, onChange, open = true }: {
   id: string
   details: AllergyDetails
   loading: boolean // the AI is still suggesting names for this allergy
   onChange: (detail: Detail) => void
+  open?: boolean // start unfolded
 }) {
   const [adding, setAdding] = useState('')
   const detail = details[id] ?? {}
@@ -24,7 +25,7 @@ export default function AllergyNames({ id, details, loading, onChange }: {
   const groups = groupsFor(id, details)
   const all = [...new Set(groups.flatMap((g) => g.names))]
   const ticked = all.filter((n) => !off.has(n)).length
-  const builtIn = ALLERGENS.some((a) => a.id === id)
+  const builtIn = inBank(id)
   const fromAi = !builtIn && Boolean(detail.names?.length)
 
   const setOff = (next: Set<string>) => onChange({ ...detail, off: [...next] })
@@ -48,7 +49,7 @@ export default function AllergyNames({ id, details, loading, onChange }: {
   }
 
   return (
-    <details className="allergy-names" open>
+    <details className="allergy-names" open={open}>
       <summary>
         <strong>{allergenLabel(id)}</strong>{' '}
         <span className="muted">· looking for {ticked} of {all.length}</span>

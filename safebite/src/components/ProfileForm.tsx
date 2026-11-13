@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { ALLERGENS, allergenLabel, type AllergyDetails } from '../lib/allergens'
 import { aiConfigured, parseAllergies, suggestAllergyNames } from '../lib/ai'
 import AllergyNames from './AllergyNames'
+import { FLARE_BANK } from '../lib/flareBank'
 import type { CurrentState, EnergyLevel, Profile } from '../lib/schema'
 
 // The answer options for the UC state and energy questions. `value` is what
@@ -125,9 +126,9 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
     setError('')
     setSaved(false)
     try {
-      // Keep details only for current allergies, without empty lists (Firestore rejects undefined).
+      // Keep details only for current allergies (and flare foods for UC users), without empty lists (Firestore rejects undefined).
       const allergyDetails = Object.fromEntries(
-        allergens.flatMap((id) => {
+        [...allergens, ...(hasUC ? FLARE_BANK.map((f) => f.id) : [])].flatMap((id) => {
           const kept = Object.entries(details[id] ?? {}).filter(([, v]) => Array.isArray(v) && v.length)
           return kept.length ? [[id, Object.fromEntries(kept)]] : []
         }),
@@ -271,6 +272,18 @@ export default function ProfileForm({ profile, submitLabel }: { profile: Profile
                 </label>
               ))}
             </div>
+          </fieldset>
+
+          {/* Question 4b: the flare foods (lib/flareBank.ts), to untick any that don't bother this user. */}
+          <fieldset>
+            <legend>Foods to go easy on during a flare-up</legend>
+            <p className="muted">
+              {currentState === 'flare' ? "You're in a flare-up, so" : 'When you set a flare-up,'} we flag recipes and products with these.
+              Untick any that don't bother you. This is general UC diet guidance, not medical advice.
+            </p>
+            {FLARE_BANK.map((f) => (
+              <AllergyNames key={f.id} id={f.id} details={details} loading={false} onChange={(d) => setDetail(f.id, d)} open={false} />
+            ))}
           </fieldset>
 
           <fieldset>

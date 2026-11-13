@@ -9,7 +9,7 @@
 //   "masa" would match "masala"         → "masa harina"
 //   "gin" would match "ginger", "til" would match "tilapia", "goose" "gooseberry"
 // Known look-alikes that still match: "eggplant" (egg), "cocoa butter" (dairy),
-// "water chestnut" (tree nuts), "sweet potato" (nightshades). Users can untick
+// "water chestnut" (tree nuts), "sweet potato" (nightshades), "scalloped potatoes" (shellfish). Users can untick
 // a name, or a later rules/ table can handle exceptions.
 //
 // So don't list what another name already catches ("milk" catches "milk powder"
@@ -23,7 +23,7 @@
 // `common: true` puts the allergy in the main checkbox list; the rest are under "More".
 //
 // The ids are stored in profiles/{uid}.allergens: never rename an existing id.
-// shortcut: written by hand from general knowledge; check against Open Food Facts' allergen taxonomy before relying on it.
+// Checked 2026-11-13 against Open Food Facts' English allergen names (test/offTags.test.mjs); other languages not checked.
 
 export interface AllergyGroup {
   label: string
@@ -49,6 +49,7 @@ export const SPELLINGS: readonly (readonly string[])[] = [
   ['pollock', 'pollack'],
   ['crawfish', 'crayfish'],
   ['tahini', 'tahina'],
+  ['soy', 'soja', 'soia'],
   ['sulfite', 'sulphite'],
   ['bisulfite', 'bisulphite'],
   ['metabisulfite', 'metabisulphite'],
@@ -127,7 +128,7 @@ export const ALLERGY_BANK: readonly AllergyEntry[] = [
       { label: 'Pistachios', names: ['pistachio'] },
       { label: 'Walnuts', names: ['walnut'] },
       { label: 'Other tree nuts', names: ['hickory nut', 'beechnut'] },
-      { label: 'Nut products', names: ['nuts', 'praline', 'marzipan', 'frangipane'] },
+      { label: 'Nut products', names: ['nuts', 'treenut', 'praline', 'marzipan', 'frangipane'] },
       { label: 'Sometimes contains tree nuts', maybe: true, names: ['nougat', 'pesto', 'nut oil', 'nut butter', 'amaretto', 'amaretti'] },
     ],
   },
@@ -142,7 +143,7 @@ export const ALLERGY_BANK: readonly AllergyEntry[] = [
   {
     id: 'fish', label: 'Fish', common: true,
     groups: [
-      { label: 'Fish', names: ['fish', 'anchov', 'salmon', 'tuna', 'cod', 'haddock', 'hake', 'pollock', 'tilapia', 'trout', 'sardine', 'mackerel', 'herring', 'halibut', 'snapper', 'bass', 'catfish', 'whitefish', 'monkfish', 'swordfish', 'flounder', 'grouper', 'perch', 'pike', 'mahi', 'bonito', 'eel'] },
+      { label: 'Fish', names: ['fish', 'anchov', 'salmon', 'tuna', 'cod', 'haddock', 'hake', 'pollock', 'tilapia', 'trout', 'sardine', 'mackerel', 'herring', 'halibut', 'snapper', 'bass', 'catfish', 'whitefish', 'monkfish', 'swordfish', 'flounder', 'grouper', 'perch', 'pike', 'mahi', 'bonito', 'eel', 'turbot', 'sole'] },
       { label: 'Fish products', names: ['roe', 'caviar', 'surimi', 'katsuobushi', 'nam pla', 'bottarga', 'isinglass'] },
       { label: 'Sometimes contains fish', maybe: true, names: ['worcestershire', 'caesar', 'dashi', 'omega-3'] },
     ],
@@ -151,7 +152,7 @@ export const ALLERGY_BANK: readonly AllergyEntry[] = [
     id: 'shellfish', label: 'Shellfish', common: true,
     groups: [
       { label: 'Crustaceans', names: ['shellfish', 'crustacean', 'shrimp', 'prawn', 'crab', 'lobster', 'crawfish', 'langoustine', 'scampi', 'krill'] },
-      { label: 'Molluscs', names: ['mollus', 'clam', 'mussel', 'oyster', 'scallops', 'sea scallop', 'bay scallop', 'squid', 'calamari', 'octopus', 'cuttlefish', 'snail', 'escargot', 'abalone', 'whelk', 'cockle', 'conch', 'sea urchin'] },
+      { label: 'Molluscs', names: ['mollus', 'clam', 'mussel', 'oyster', 'scallop', 'squid', 'calamari', 'octopus', 'cuttlefish', 'snail', 'escargot', 'abalone', 'whelk', 'cockle', 'conch', 'sea urchin'] },
       { label: 'Sometimes contains shellfish', maybe: true, names: ['seafood', 'paella', 'bouillabaisse', 'glucosamine'] },
     ],
   },
@@ -264,7 +265,7 @@ export const ALLERGY_BANK: readonly AllergyEntry[] = [
   {
     id: 'mushrooms', label: 'Mushrooms',
     groups: [
-      { label: 'Mushrooms', names: ['mushroom', 'shiitake', 'portobello', 'porcini', 'chanterelle', 'enoki', 'maitake', 'cremini', 'morel', 'mycoprotein'] },
+      { label: 'Mushrooms', names: ['mushroom', 'shiitake', 'portobello', 'porcini', 'chanterelle', 'enoki', 'maitake', 'cremini', 'morel', 'matsutake', 'mycoprotein'] },
       { label: 'Sometimes contains mushrooms', maybe: true, names: ['truffle', 'umami seasoning'] },
     ],
   },

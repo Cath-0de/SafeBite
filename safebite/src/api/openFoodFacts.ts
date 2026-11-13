@@ -7,13 +7,15 @@ export interface Product {
   brand: string
   ingredientsText: string
   allergens: string[]
+  // "May contain" warnings from the packet, in the same form as allergens.
+  traces: string[]
 }
 
 // Looks up one barcode. Returns null if Open Food Facts has no such product,
 // and throws if the request itself fails.
 export async function lookupBarcode(barcode: string): Promise<Product | null> {
   // Ask only for the fields we use, to keep the response small.
-  const fields = 'product_name,brands,ingredients_text,allergens_tags'
+  const fields = 'product_name,brands,ingredients_text,allergens_tags,traces_tags'
   const res = await fetch(
     `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${fields}`,
   )
@@ -32,5 +34,6 @@ export async function lookupBarcode(barcode: string): Promise<Product | null> {
     // Tags arrive as "en:milk"; strip the language prefix. These are Open Food
     // Facts' own names, not yet mapped to the ids in lib/allergens.ts.
     allergens: ((p.allergens_tags ?? []) as string[]).map((t) => t.replace(/^en:/, '')),
+    traces: ((p.traces_tags ?? []) as string[]).map((t) => t.replace(/^en:/, '')),
   }
 }

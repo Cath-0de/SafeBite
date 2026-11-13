@@ -6,14 +6,14 @@ import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import type { Meal } from '../api/mealdb'
 import { useAuth } from '../context/AuthContext'
-import { allergenRegex, allergensIn, maybeAllergensIn, NO_ALLERGIES } from '../lib/allergens'
+import { allergenRegex, allergensIn, allergiesOf, maybeAllergensIn } from '../lib/allergens'
 import Chip from './Chip'
 import Icon from './Icon'
 import UnverifiedTag from './UnverifiedTag'
 
 export default function RecipeCard({ meal }: { meal: Meal }) {
   const { user, profile } = useAuth()
-  const allergies = profile ?? NO_ALLERGIES
+  const allergies = allergiesOf(profile)
   const names = meal.ingredients.map((i) => i.name)
   const found = allergensIn(allergies, names)
   const maybe = maybeAllergensIn(allergies, names)

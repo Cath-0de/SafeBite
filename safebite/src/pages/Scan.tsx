@@ -13,7 +13,7 @@ import { useAuth } from '../context/AuthContext'
 import { aiConfigured, findProductOnline, type WebProduct } from '../lib/ai'
 import { getUserProduct, hasOpenReport, reportProduct, saveUserProduct } from '../lib/db'
 import { firebaseConfigured } from '../lib/firebase'
-import { allergenRegex, allergensIn, maybeAllergensIn, NO_ALLERGIES } from '../lib/allergens'
+import { allergenRegex, allergensIn, allergiesOf, maybeAllergensIn } from '../lib/allergens'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import Chip from '../components/Chip'
@@ -54,15 +54,18 @@ export default function Scan() {
   // Whether the camera view is open.
   const [scanning, setScanning] = useState(false)
   const { user, profile } = useAuth()
-  const allergies = profile ?? NO_ALLERGIES
+  const allergies = allergiesOf(profile)
   const myAllergens = allergies.allergens
   const re = allergenRegex(allergies)
   const maybeRe = allergenRegex(allergies, 'maybe')
   // One part per ingredient, with the separators kept as their own parts so the text joins back unchanged.
   const parts = product ? product.ingredientsText.split(/([,;()[\]])/) : []
   const found = product ? allergensIn(allergies, [...parts, ...product.allergens]) : []
-  // Allergies only a "sometimes contains" ingredient hints at ("natural flavors" for dairy).
-  const maybe = product ? maybeAllergensIn(allergies, parts) : []
+  // Allergies only a "sometimes contains" ingredient hints at ("natural flavors" for dairy),
+  // or that the packet's "may contain" warning names.
+  const maybe = product
+    ? [...new Set([...maybeAllergensIn(allergies, parts), ...allergensIn(allergies, product.traces)])].filter((m) => !found.includes(m))
+    : []
   const addedByOther = Boolean(addedBy && addedBy !== user?.uid)
   // Shown from products/{barcode}, or a fresh AI result: these can be reported.
   // Nothing listed, only what the AI found online, or someone else's typing means we can't be sure: ask the user to check the packet.
@@ -126,14 +129,15 @@ export default function Scan() {
           : null,
       ])
       const allergens = off?.allergens ?? []
+      const traces = off?.traces ?? []
       if (off?.ingredientsText) {
         setProduct(off)
         setSource('Open Food Facts')
       } else if (usda) {
-        setProduct({ barcode: code, ...usda, allergens })
+        setProduct({ barcode: code, ...usda, allergens, traces })
         setSource('USDA FoodData Central')
       } else if (added) {
-        setProduct({ barcode: code, name: added.name, brand: added.brand, ingredientsText: added.ingredientsText, allergens })
+        setProduct({ barcode: code, name: added.name, brand: added.brand, ingredientsText: added.ingredientsText, allergens, traces })
         // A stored AI result shows like a fresh one; a person's version shows who added it.
         if (added.source === 'ai') setStoredAi(true)
         else setAddedBy(added.addedBy)
@@ -175,7 +179,7 @@ export default function Scan() {
         return
       }
       await saveUserProduct(user.uid, code, { ...entry, source: 'user' })
-      setProduct({ barcode: code, ...entry, allergens: product?.allergens ?? [] })
+      setProduct({ barcode: code, ...entry, allergens: product?.allergens ?? [], traces: product?.traces ?? [] })
       setAddedBy(user.uid)
       setSource('')
       setNotFound(false)
@@ -198,7 +202,7 @@ export default function Scan() {
         setWebMissed(true)
         return
       }
-      setProduct({ barcode: code, name: result.name, brand: result.brand, ingredientsText: result.ingredientsText, allergens: product?.allergens ?? [] })
+      setProduct({ barcode: code, name: result.name, brand: result.brand, ingredientsText: result.ingredientsText, allergens: product?.allergens ?? [], traces: product?.traces ?? [] })
       setNotFound(false)
       setSource('')
       setWeb({ sources: result.sources })
@@ -328,6 +332,7 @@ export default function Scan() {
             <SafetyBadge status={status} allergens={found} reason={status === 'check' ? checkReason : undefined} size="lg" />
           )}
           <p><strong>Allergens:</strong> {product.allergens.length ? product.allergens.join(', ') : 'none listed'}</p>
+          {product.traces.length > 0 && <p><strong>May contain:</strong> {product.traces.join(', ')}</p>}
           <p className="ingredients">
             {!product.ingredientsText
               ? 'No ingredients listed.'

@@ -4,7 +4,7 @@
 // other users shared (matching the search, if there is one), and can add one.
 // Recipes with the user's allergies show (their page offers replacements) unless
 // the toggle hides them. A search with too few recipes also looks online with the AI.
-// No flare filtering yet.
+// During a UC flare-up the flare foods (lib/flareBank.ts) count as allergies too.
 // The search is kept in the URL ("/recipes?q=pasta") so going back from a
 // recipe's page shows the same results again.
 import { useEffect, useState, type FormEvent } from 'react'
@@ -12,7 +12,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { browseMeals, parseExclusions, parseTerms, searchMeals, searchSuggestions, type Meal, type SearchResult } from '../api/mealdb'
 import { useAuth } from '../context/AuthContext'
 import { aiConfigured } from '../lib/ai'
-import { exclusionsToAllergies, NO_ALLERGIES } from '../lib/allergens'
+import { allergiesOf, exclusionsToAllergies } from '../lib/allergens'
 import { hasAllergen, hasExcluded, listUserRecipes, lookUpRecipes, matchesTerms } from '../lib/recipes'
 import RecipeCard from '../components/RecipeCard'
 
@@ -31,7 +31,7 @@ export default function Recipes() {
   // What's typed in the search box, which may not have been submitted yet.
   const [query, setQuery] = useState(q)
   const { user, profile, loading } = useAuth()
-  const allergies = profile ?? NO_ALLERGIES
+  const allergies = allergiesOf(profile)
   // Whether recipes with the user's allergies are hidden. Saved in this browser;
   // storage can be blocked (e.g. some private windows), and then it lasts for this visit.
   const [hide, setHide] = useState(() => {
@@ -89,7 +89,7 @@ export default function Recipes() {
   useEffect(() => {
     if (!needsAi || !user || !profile) return
     let cancelled = false
-    lookUpRecipes(user.uid, q, profile, meals ?? [], community?.meals ?? [])
+    lookUpRecipes(user.uid, q, allergiesOf(profile), meals ?? [], community?.meals ?? [])
       .then((found) => {
         if (!cancelled) setOnline({ q, meals: found, error: '' })
       })
@@ -123,7 +123,7 @@ export default function Recipes() {
     if (loading) return
     let cancelled = false
     const load: Promise<{ meals: Meal[]; search?: SearchResult }> = q
-      ? searchMeals(q, (m) => !hasExcluded(m, exclusionsToAllergies(parseExclusions(q))) && !(hide && hasAllergen(m, profile ?? NO_ALLERGIES)))
+      ? searchMeals(q, (m) => !hasExcluded(m, exclusionsToAllergies(parseExclusions(q))) && !(hide && hasAllergen(m, allergiesOf(profile))))
           .then((search) => ({ meals: search.meals, search }))
       : browseMeals().then((all) => ({ meals: all.slice(0, BROWSE_COUNT) }))
     load
@@ -189,7 +189,7 @@ export default function Recipes() {
         {allergies.allergens.length > 0 && (
           <label className="switch">
             <input type="checkbox" role="switch" checked={!hide} onChange={(e) => onToggle(e.target.checked)} />
-            Show recipes with my allergies &amp; replacements
+            Show recipes with my allergies{allergies.allergens.some((id) => id.startsWith('flare-')) && ' or flare foods'} &amp; replacements
           </label>
         )}
       </div>

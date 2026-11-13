@@ -2,7 +2,8 @@
 // the names each goes by live in allergyBank.ts; profiles/{uid}.allergens
 // stores their ids, plus any allergies the user typed in themselves.
 // rules/{ruleId}.matchesAllergenTags should use the same ids.
-import { ALLERGY_BANK, SPELLINGS, type AllergyGroup } from './allergyBank'
+import { ALLERGY_BANK, SPELLINGS, type AllergyGroup } from './allergyBank.ts'
+import { FLARE_BANK } from './flareBank.ts'
 
 export const ALLERGENS = ALLERGY_BANK
 
@@ -13,7 +14,16 @@ export type Allergies = { allergens: string[]; allergyDetails?: AllergyDetails }
 export type AllergyDetails = Record<string, { names?: string[]; maybe?: string[]; extra?: string[]; off?: string[] }>
 export const NO_ALLERGIES: Allergies = { allergens: [] }
 
-const known = (id: string) => ALLERGENS.find((a) => a.id === id)
+const known = (id: string) => ALLERGENS.find((a) => a.id === id) ?? FLARE_BANK.find((a) => a.id === id)
+// Whether an id is one of SafeBite's own lists (allergy or flare food) rather than typed in.
+export const inBank = (id: string) => Boolean(known(id))
+
+// The allergies to check for a profile: its own, plus the flare foods while a UC user is in a flare-up.
+export function allergiesOf(p: (Allergies & { hasUC?: boolean; currentState?: string }) | null): Allergies {
+  if (!p) return NO_ALLERGIES
+  // hasUC is missing on profiles made before the question existed; those were all UC users.
+  return p.hasUC !== false && p.currentState === 'flare' ? { ...p, allergens: [...p.allergens, ...FLARE_BANK.map((f) => f.id)] } : p
+}
 const escape = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // Every spelling of a name, from any one of them.
 const spellingsOf = new Map(SPELLINGS.flatMap((all) => all.map((word) => [word, all] as const)))
@@ -56,7 +66,10 @@ function activeNames(id: string, details?: AllergyDetails) {
 }
 
 // What to show the user for an allergen id: its label, or the typed text itself.
-export const allergenLabel = (id: string) => known(id)?.label ?? id
+export const allergenLabel = (id: string) => {
+  const k = known(id)
+  return !k ? id : id.startsWith('flare-') ? `${k.label} (flare)` : k.label
+}
 
 // One case-insensitive regex for all of the user's allergies, or null if none.
 // kind 'maybe' matches the "sometimes contains" names instead.

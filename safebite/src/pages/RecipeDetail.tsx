@@ -10,7 +10,7 @@ import type { Meal } from '../api/mealdb'
 import { aiConfigured, suggestSwaps } from '../lib/ai'
 import { useAuth } from '../context/AuthContext'
 import { deleteUserRecipe, markRecipeViewed } from '../lib/db'
-import { allergenLabel, allergensIn, maybeAllergensIn, NO_ALLERGIES, type Allergies } from '../lib/allergens'
+import { allergenLabel, allergensIn, allergiesOf, maybeAllergensIn, type Allergies } from '../lib/allergens'
 import { getRecipe, isUserRecipeId, USER_RECIPE_PREFIX } from '../lib/recipes'
 import Button from '../components/Button'
 import Chip from '../components/Chip'
@@ -98,7 +98,7 @@ export default function RecipeDetail() {
   // Ask once per recipe about every ingredient with one of the user's allergies.
   useEffect(() => {
     if (!viewed || !aiConfigured) return
-    const allergies = profile ?? NO_ALLERGIES
+    const allergies = allergiesOf(profile)
     const items = viewed.ingredients.flatMap((i) => {
       const labels = allergensIn(allergies, [i.name])
       return labels.length ? [{ ingredient: i.name, reason: `contains ${labels.join(', ').toLowerCase()}` }] : []
@@ -118,7 +118,7 @@ export default function RecipeDetail() {
     if (!viewed) return
     const meal = viewed
     mergeAdvice(meal.id, { [name.toLowerCase()]: 'loading' })
-    fetchAdvice(meal, [{ ingredient: name, reason: "can't eat it" }], profile ?? NO_ALLERGIES).then((map) => mergeAdvice(meal.id, map))
+    fetchAdvice(meal, [{ ingredient: name, reason: "can't eat it" }], allergiesOf(profile)).then((map) => mergeAdvice(meal.id, map))
   }
 
   // Going back keeps the user's search results. If they opened this page
@@ -153,7 +153,7 @@ export default function RecipeDetail() {
   }
 
   // The user's allergens found in this recipe, and ones that only a "maybe" ingredient hints at.
-  const allergies = profile ?? NO_ALLERGIES
+  const allergies = allergiesOf(profile)
   const myAllergens = allergies.allergens
   const ingredientNames = meal.ingredients.map((i) => i.name)
   const found = allergensIn(allergies, ingredientNames)
